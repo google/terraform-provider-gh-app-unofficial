@@ -1,4 +1,4 @@
-module github.com/hashicorp/terraform-provider-scaffolding-framework
+module github.com/google/terraform-provider-gh-app-unofficial
 
 go 1.25.8
 
