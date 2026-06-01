@@ -1,3 +1,5 @@
+# Copyright (c) HashiCorp, Inc.
+
 resource "terraform_data" "example" {
   input = "fake-string"
 
