@@ -1,4 +1,5 @@
 # Copyright (c) HashiCorp, Inc.
+version: "2"
 
 linters:
   default: none
@@ -31,29 +32,29 @@ linters:
       - builtin$
       - examples$
 
-linters-settings:
-  depguard:
-    rules:
-      main:
-        list-mode: lax
-        files:
-          - "$all"
-        allow:
-          - $gostd
-          - github.com/google/terraform-provider-gh-app-unofficial
-          - github.com/hashicorp
-        deny:
-          - pkg: "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest" # prefix
-            desc: "Use github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+  settings:
+    depguard:
+      rules:
+        main:
+          list-mode: lax
+          files:
+            - "$all"
+          allow:
+            - $gostd
+            - github.com/google/terraform-provider-gh-app-unofficial
+            - github.com/hashicorp
+          deny:
+            - pkg: "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest" # prefix
+              desc: "Use github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 
-          - pkg: "github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource" # prefix
-            desc: "Use github.com/hashicorp/terraform-plugin-testing/helper/resource"
+            - pkg: "github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource" # prefix
+              desc: "Use github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
-          - pkg: "github.com/hashicorp/terraform-plugin-sdk/v2/terraform" # prefix
-            desc: "Use github.com/hashicorp/terraform-plugin-testing/terraform"
+            - pkg: "github.com/hashicorp/terraform-plugin-sdk/v2/terraform" # prefix
+              desc: "Use github.com/hashicorp/terraform-plugin-testing/terraform"
 
-          - pkg: "github.com/hashicorp/terraform-plugin-sdk/v2" # prefix
-            desc: "Use Terraform Plugin Framework"
+            - pkg: "github.com/hashicorp/terraform-plugin-sdk/v2" # prefix
+              desc: "Use Terraform Plugin Framework"
 
 issues:
   max-issues-per-linter: 0
