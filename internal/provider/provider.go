@@ -49,7 +49,6 @@ func (p *ghAppProvider) Resources(ctx context.Context) []func() resource.Resourc
 	}
 }
 
-
 func (p *ghAppProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return nil
 }
