@@ -10,7 +10,7 @@ lint:
 	golangci-lint run
 
 generate:
-	cd tools; go generate -tags tools ./...
+	cd tools; go generate ./...
 
 fmt:
 	gofmt -s -w -e .
