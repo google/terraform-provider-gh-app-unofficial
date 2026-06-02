@@ -6,4 +6,7 @@ terraform {
   }
 }
 
-provider "gh-app" {}
+provider "gh-app" {
+}
+
+data "gh-app_installations" "example" {}
