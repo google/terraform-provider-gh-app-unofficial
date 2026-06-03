@@ -5,15 +5,17 @@ package provider
 
 import (
 	"context"
-	"net/http"
+	"fmt"
 	"os"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"golang.org/x/oauth2"
+
+	"github.com/google/go-github/v88/github"
 )
 
 // Ensure GHAppProvider satisfies various provider interfaces.
@@ -61,13 +63,6 @@ type ghProviderModel struct {
 	EnterpriseSlug types.String `tfsdk:"enterprise_slug"`
 }
 
-type GHClient struct {
-	BaseURL        string
-	Token          string
-	EnterpriseSlug string
-	HTTPClient     *http.Client
-}
-
 func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var config ghProviderModel
 	diags := req.Config.Get(ctx, &config)
@@ -110,13 +105,14 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	}
 
 	// initialize the client
-	client := &GHClient{
-		BaseURL:        "https://api.github.com",
-		Token:          token,
-		EnterpriseSlug: entpriseSlug,
-		HTTPClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+	ts := oauth2.StaticTokenSource(
+		&oauth2.Token{AccessToken: token},
+	)
+	client, err := github.NewClient(github.WithHTTPClient(oauth2.NewClient(ctx, ts)))
+
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create GitHub client: %s", err))
+		return
 	}
 
 	// make the data available to data sources and resources
