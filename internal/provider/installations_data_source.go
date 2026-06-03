@@ -2,9 +2,10 @@ package provider
 
 import (
 	"context"
-  "fmt"
-  "net/http"
+	"fmt"
+	"net/http"
 
+	"github.com/google/go-github/v88/github"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -20,7 +21,7 @@ func NewInstallationsDataSource() datasource.DataSource {
 
 // InstallationsDataSource is the data source implementation.
 type InstallationsDataSource struct {
-	client *GHClient
+	client *github.Client
 }
 
 // Metadata returns the data source type name.
@@ -29,7 +30,7 @@ func (d *InstallationsDataSource) Metadata(_ context.Context, req datasource.Met
 }
 
 type InstallationsModel struct {
-  TargetOrg types.String `tfsdk:"target_org"`
+	TargetOrg           types.String `tfsdk:"target_org"`
 	Id                  types.String `tfsdk:"id"` // This is the installation ID of the app
 	AppSlug             types.String `tfsdk:"app_slug"`
 	ClientId            types.String `tfsdk:"client_id"`
@@ -45,10 +46,10 @@ type InstallationsModel struct {
 func (d *InstallationsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-      "target_org": schema.StringAttribute{
-        Optional: true,
-        Description: "The organization name for which to list installations.",
-      },
+			"target_org": schema.StringAttribute{
+				Optional:    true,
+				Description: "The organization name for which to list installations.",
+			},
 			"id": schema.StringAttribute{
 				MarkdownDescription: "The ID of the app installation.",
 				Computed:            true,
@@ -93,43 +94,46 @@ func (d *InstallationsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 
 // Read refreshes the Terraform state with the latest data.
 func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-  var data InstallationsDataSource
-  
-  resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-  
-  if resp.Diagnostics.HasError() {
-    return
-  }
+	var data InstallationsModel
 
-  url := fmt.Sprintf("enterprises/%s/apps/%s/installations", data.client.EnterpriseSlug, data.TargetOrg.ValueString())
+	// Terraform configuration data into data
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 
-  req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-  if err != nil {
-    resp.Diagnostics.AddError("Failed to create request", err.Error())
-    return
-  }
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-  req.Header.Set("Authorization", "token "+d.client.Token)
+	// Make the request
+
+	installations, resp, err := d.client.Enterprise.ListAppInstallations(ctx, d., data.TargetOrg.valueString())
+
+	url := fmt.Sprintf("enterprises/%s/apps/%s/installations", data.client.EnterpriseSlug, data.TargetOrg.ValueString())
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to create request", err.Error())
+		return
+	}
+
+	req.Header.Set("Authorization", "token "+d.client.Token)
 
 }
 
-
-
 func (d *InstallationsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-  if req.ProviderData == nil {
-    return
-  }
+	if req.ProviderData == nil {
+		return
+	}
 
-  client, ok := req.ProviderData.(*GHClient)
+	client, ok := req.ProviderData.(*GHClient)
 
-  if !ok {
-    resp.Diagnostics.AddError(
-      "Unexpected Data Source Configure Type",
-      fmt.Sprintf("Expected *GHClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-    )
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *GHClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
 
-    return
-  }
+		return
+	}
 
-  d.client = client
+	d.client = client
 }
