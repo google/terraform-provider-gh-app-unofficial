@@ -128,6 +128,8 @@ func (d *installationsDataSource) Configure(ctx context.Context, req datasource.
 	}
 
 	d.client = client
+
+	tflog.Info(ctx, "Configured installations data source client")
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -140,6 +142,10 @@ func (d *installationsDataSource) Read(ctx context.Context, req datasource.ReadR
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	tflog.Info(ctx, "Reading GitHub App installations", map[string]interface{}{
+		"target_org": data.TargetOrg.ValueString(),
+	})
 
 	// Make the request
 	client := d.client.Client
@@ -160,7 +166,13 @@ func (d *installationsDataSource) Read(ctx context.Context, req datasource.ReadR
 
 	if resp.Diagnostics.HasError() {
 		tflog.Error(ctx, fmt.Sprintf("Error setting state: %+v", resp.Diagnostics.Errors()))
+		return
 	}
+
+	tflog.Info(ctx, "Finished reading GitHub App installations", map[string]interface{}{
+		"target_org": data.TargetOrg.ValueString(),
+		"count":      len(installations),
+	})
 }
 
 func flattenInstallations(ctx context.Context, client *github.Client, enterpriseSlug, targetOrg string, installations []*github.Installation, diags *diag.Diagnostics) []app {
