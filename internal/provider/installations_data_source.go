@@ -30,7 +30,7 @@ func (d *InstallationsDataSource) Metadata(_ context.Context, req datasource.Met
 	resp.TypeName = req.ProviderTypeName + "_installations"
 }
 
-type EachAppModel struct{
+type EachAppModel struct {
 	Id                  types.String `tfsdk:"id"` // This is the installation ID of the app
 	AppSlug             types.String `tfsdk:"app_slug"`
 	ClientId            types.String `tfsdk:"client_id"`
@@ -42,8 +42,8 @@ type EachAppModel struct{
 	UpdatedAt           types.String `tfsdk:"updated_at"`
 }
 type InstallationsModel struct {
-	TargetOrg           types.String `tfsdk:"target_org"`
-	Installations       []EachAppModel `tfsdk:"installations"`
+	TargetOrg     types.String   `tfsdk:"target_org"`
+	Installations []EachAppModel `tfsdk:"installations"`
 }
 
 // Schema defines the schema for the data source.
@@ -122,7 +122,6 @@ func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadR
 		resp.Diagnostics.AddError("Failed to list installations", err.Error())
 		return
 	}
-
 
 	data.Installations = make([]EachAppModel, len(installations))
 
