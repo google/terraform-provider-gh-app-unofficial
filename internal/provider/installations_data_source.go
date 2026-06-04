@@ -14,6 +14,7 @@ import (
 
 // Ensure the implementation satisfies the expected interfaces.
 var _ datasource.DataSource = &InstallationsDataSource{}
+var _ datasource.DataSourceWithConfigure = &InstallationsDataSource{}
 
 // NewInstallationsDataSource is a helper function to simplify the provider implementation.
 func NewInstallationsDataSource() datasource.DataSource {
