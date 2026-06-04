@@ -32,9 +32,9 @@ func (d *InstallationsDataSource) Metadata(_ context.Context, req datasource.Met
 }
 
 type EachAppModel struct {
-	Id                  types.String `tfsdk:"id"` // This is the installation ID of the app
+	ID                  types.String `tfsdk:"id"` // This is the installation ID of the app
 	AppSlug             types.String `tfsdk:"app_slug"`
-	ClientId            types.String `tfsdk:"client_id"`
+	ClientID            types.String `tfsdk:"client_id"`
 	RepositorySelection types.String `tfsdk:"repository_selection"`
 	RepositoriesURL     types.String `tfsdk:"repositories_url"`
 	Permissions         types.Map    `tfsdk:"permissions"` // map[string]String
@@ -146,9 +146,9 @@ func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadR
 	data.Installations = make([]EachAppModel, len(installations))
 
 	for i, installation := range installations {
-		data.Installations[i].Id = types.StringValue(strconv.FormatInt(installation.GetID(), 10))
+		data.Installations[i].ID = types.StringValue(strconv.FormatInt(installation.GetID(), 10))
 		data.Installations[i].AppSlug = types.StringValue(installation.GetAppSlug())
-		data.Installations[i].ClientId = types.StringValue(installation.GetClientID())
+		data.Installations[i].ClientID = types.StringValue(installation.GetClientID())
 		data.Installations[i].RepositorySelection = types.StringValue(installation.GetRepositorySelection())
 		data.Installations[i].RepositoriesURL = types.StringValue(installation.GetRepositoriesURL())
 		data.Installations[i].CreatedAt = types.StringValue(installation.GetCreatedAt().String())
