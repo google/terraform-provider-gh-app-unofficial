@@ -38,7 +38,7 @@ func New(version string) func() provider.Provider {
 }
 
 func (p *GHAppProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
-	resp.TypeName = "gh-app"
+	resp.TypeName = "ghapp"
 	resp.Version = p.version
 }
 
