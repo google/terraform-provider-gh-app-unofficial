@@ -28,7 +28,7 @@ func (d *InstallationsDataSource) Metadata(_ context.Context, req datasource.Met
 	resp.TypeName = req.ProviderTypeName + "_installations"
 }
 
-type EachAppModel struct {
+type App struct {
 	ID                  types.String `tfsdk:"id"` // This is the installation ID of the app
 	AppSlug             types.String `tfsdk:"app_slug"`
 	ClientID            types.String `tfsdk:"client_id"`
@@ -39,9 +39,9 @@ type EachAppModel struct {
 	CreatedAt           types.String `tfsdk:"created_at"`
 	UpdatedAt           types.String `tfsdk:"updated_at"`
 }
-type InstallationsModel struct {
-	TargetOrg     types.String   `tfsdk:"target_org"`
-	Installations []EachAppModel `tfsdk:"installations"`
+type Installation struct {
+	TargetOrg     types.String `tfsdk:"target_org"`
+	Installations []App        `tfsdk:"installations"`
 }
 
 // Schema defines the schema for the data source.
@@ -123,7 +123,7 @@ func (d *InstallationsDataSource) Configure(ctx context.Context, req datasource.
 
 // Read refreshes the Terraform state with the latest data.
 func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	var data InstallationsModel
+	var data Installation
 
 	// Terraform configuration data into data
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
@@ -133,8 +133,10 @@ func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadR
 	}
 
 	// Make the request
+	client := d.client.Client
+	enterpriseSlug := d.client.EnterpriseSlug
 
-	installations, _, err := d.client.Client.Enterprise.ListAppInstallations(ctx, d.client.EnterpriseSlug, data.TargetOrg.ValueString(), nil)
+	installations, _, err := client.Enterprise.ListAppInstallations(ctx, enterpriseSlug, data.TargetOrg.ValueString(), nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to list installations", err.Error())
 		return
@@ -152,8 +154,8 @@ func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadR
 	}
 }
 
-func flattenInstallations(ctx context.Context, installations []*github.Installation, diags *diag.Diagnostics) []EachAppModel {
-	result := make([]EachAppModel, len(installations))
+func flattenInstallations(ctx context.Context, installations []*github.Installation, diags *diag.Diagnostics) []App {
+	result := make([]App, len(installations))
 
 	for i, installation := range installations {
 		result[i].ID = types.StringValue(strconv.FormatInt(installation.GetID(), 10))
