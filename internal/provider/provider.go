@@ -77,11 +77,11 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	}
 
 	if config.Token.IsUnknown() {
-		resp.Diagnostics.AddError("Missing API Token", "The token attribute must be set.")
+		resp.Diagnostics.AddError("Unknown API Token", "The provider cannot evaluate the GitHub API token.")
 	}
 
 	if config.EnterpriseSlug.IsUnknown() {
-		resp.Diagnostics.AddError("Missing Enterprise Slug", "The enterprise_slug attribute must be set.")
+		resp.Diagnostics.AddError("Unknown Enterprise Slug", "The provider cannot evaluate the enterprise slug.")
 	}
 
 	if resp.Diagnostics.HasError() {
