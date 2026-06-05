@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/google/go-github/v88/github"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -15,11 +17,6 @@ import (
 // Ensure the implementation satisfies the expected interfaces.
 var _ datasource.DataSource = &InstallationsDataSource{}
 var _ datasource.DataSourceWithConfigure = &InstallationsDataSource{}
-
-// NewInstallationsDataSource is a helper function to simplify the provider implementation.
-func NewInstallationsDataSource() datasource.DataSource {
-	return &InstallationsDataSource{}
-}
 
 // InstallationsDataSource is the data source implementation.
 type InstallationsDataSource struct {
@@ -143,16 +140,29 @@ func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadR
 		return
 	}
 
-	data.Installations = make([]EachAppModel, len(installations))
+	data.Installations = flattenInstallations(ctx, installations, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		tflog.Error(ctx, fmt.Sprintf("Error setting state: %+v", resp.Diagnostics.Errors()))
+	}
+}
+
+func flattenInstallations(ctx context.Context, installations []*github.Installation, diags *diag.Diagnostics) []EachAppModel {
+	result := make([]EachAppModel, len(installations))
 
 	for i, installation := range installations {
-		data.Installations[i].ID = types.StringValue(strconv.FormatInt(installation.GetID(), 10))
-		data.Installations[i].AppSlug = types.StringValue(installation.GetAppSlug())
-		data.Installations[i].ClientID = types.StringValue(installation.GetClientID())
-		data.Installations[i].RepositorySelection = types.StringValue(installation.GetRepositorySelection())
-		data.Installations[i].RepositoriesURL = types.StringValue(installation.GetRepositoriesURL())
-		data.Installations[i].CreatedAt = types.StringValue(installation.GetCreatedAt().String())
-		data.Installations[i].UpdatedAt = types.StringValue(installation.GetUpdatedAt().String())
+		result[i].ID = types.StringValue(strconv.FormatInt(installation.GetID(), 10))
+		result[i].AppSlug = types.StringValue(installation.GetAppSlug())
+		result[i].ClientID = types.StringValue(installation.GetClientID())
+		result[i].RepositorySelection = types.StringValue(installation.GetRepositorySelection())
+		result[i].RepositoriesURL = types.StringValue(installation.GetRepositoriesURL())
+		result[i].CreatedAt = types.StringValue(installation.GetCreatedAt().String())
+		result[i].UpdatedAt = types.StringValue(installation.GetUpdatedAt().String())
 
 		var permissionsMap map[string]string
 		if installation.Permissions != nil {
@@ -162,24 +172,20 @@ func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadR
 			}
 		}
 
-		permissionsVal, diags := types.MapValueFrom(ctx, types.StringType, permissionsMap)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
+		permissionsVal, errDiags := types.MapValueFrom(ctx, types.StringType, permissionsMap)
+		diags.Append(errDiags...)
+		if diags.HasError() {
+			return nil
 		}
-		data.Installations[i].Permissions = permissionsVal
+		result[i].Permissions = permissionsVal
 
-		eventsVal, diags := types.ListValueFrom(ctx, types.StringType, installation.Events)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
+		eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.Events)
+		diags.Append(errDiags...)
+		if diags.HasError() {
+			return nil
 		}
-		data.Installations[i].Events = eventsVal
+		result[i].Events = eventsVal
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-
-	if resp.Diagnostics.HasError() {
-		tflog.Error(ctx, fmt.Sprintf("Error setting state: %+v", resp.Diagnostics.Errors()))
-	}
+	return result
 }

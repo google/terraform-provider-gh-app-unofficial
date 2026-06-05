@@ -137,6 +137,8 @@ func (p *GHAppProvider) Resources(ctx context.Context) []func() resource.Resourc
 
 func (p *GHAppProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		NewInstallationsDataSource,
+		func() datasource.DataSource {
+			return &InstallationsDataSource{}
+		},
 	}
 }
