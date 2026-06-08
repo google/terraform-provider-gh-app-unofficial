@@ -28,6 +28,7 @@ func (d *InstallationsDataSource) Metadata(_ context.Context, req datasource.Met
 	resp.TypeName = req.ProviderTypeName + "_installations"
 }
 
+// App represents the model of a single GitHub App Installation in the Terraform state.
 type App struct {
 	ID                  types.String `tfsdk:"id"` // This is the installation ID of the app
 	ClientID            types.String `tfsdk:"client_id"`
@@ -39,6 +40,8 @@ type App struct {
 	CreatedAt           types.String `tfsdk:"created_at"`
 	UpdatedAt           types.String `tfsdk:"updated_at"`
 }
+
+// Installation represents the data source model containing the target organization and its list of app installations.
 type Installation struct {
 	TargetOrg     types.String `tfsdk:"target_org"`
 	Installations []App        `tfsdk:"installations"`
@@ -102,6 +105,7 @@ func (d *InstallationsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 	}
 }
 
+// Configure adds the provider-configured GitHub client to the data source.
 func (d *InstallationsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
