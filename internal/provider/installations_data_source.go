@@ -155,17 +155,9 @@ func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadR
 }
 
 func flattenInstallations(ctx context.Context, installations []*github.Installation, diags *diag.Diagnostics) []App {
-	result := make([]App, len(installations))
+	result := make([]App, 0, len(installations))
 
-	for i, installation := range installations {
-		result[i].ID = types.StringValue(strconv.FormatInt(installation.GetID(), 10))
-		result[i].AppSlug = types.StringValue(installation.GetAppSlug())
-		result[i].ClientID = types.StringValue(installation.GetClientID())
-		result[i].RepositorySelection = types.StringValue(installation.GetRepositorySelection())
-		result[i].RepositoriesURL = types.StringValue(installation.GetRepositoriesURL())
-		result[i].CreatedAt = types.StringValue(installation.GetCreatedAt().String())
-		result[i].UpdatedAt = types.StringValue(installation.GetUpdatedAt().String())
-
+	for _, installation := range installations {
 		var permissionsMap map[string]string
 		if installation.Permissions != nil {
 			pb, err := json.Marshal(installation.Permissions)
@@ -179,14 +171,24 @@ func flattenInstallations(ctx context.Context, installations []*github.Installat
 		if diags.HasError() {
 			return nil
 		}
-		result[i].Permissions = permissionsVal
 
 		eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.Events)
 		diags.Append(errDiags...)
 		if diags.HasError() {
 			return nil
 		}
-		result[i].Events = eventsVal
+
+		result = append(result, App{
+			ID:                  types.StringValue(strconv.FormatInt(installation.GetID(), 10)),
+			ClientID:            types.StringValue(installation.GetClientID()),
+			AppSlug:             types.StringValue(installation.GetAppSlug()),
+			RepositoriesURL:     types.StringValue(installation.GetRepositoriesURL()),
+			RepositorySelection: types.StringValue(installation.GetRepositorySelection()),
+			Events:              eventsVal,
+			Permissions:         permissionsVal,
+			CreatedAt:           types.StringValue(installation.GetCreatedAt().String()),
+			UpdatedAt:           types.StringValue(installation.GetUpdatedAt().String()),
+		})
 	}
 
 	return result
