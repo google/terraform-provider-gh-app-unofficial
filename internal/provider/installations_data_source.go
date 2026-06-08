@@ -30,12 +30,12 @@ func (d *InstallationsDataSource) Metadata(_ context.Context, req datasource.Met
 
 type App struct {
 	ID                  types.String `tfsdk:"id"` // This is the installation ID of the app
-	AppSlug             types.String `tfsdk:"app_slug"`
 	ClientID            types.String `tfsdk:"client_id"`
-	RepositorySelection types.String `tfsdk:"repository_selection"`
+	AppSlug             types.String `tfsdk:"app_slug"`
 	RepositoriesURL     types.String `tfsdk:"repositories_url"`
-	Permissions         types.Map    `tfsdk:"permissions"` // map[string]String
+	RepositorySelection types.String `tfsdk:"repository_selection"`
 	Events              types.List   `tfsdk:"events"`      // []String
+	Permissions         types.Map    `tfsdk:"permissions"` // map[string]String
 	CreatedAt           types.String `tfsdk:"created_at"`
 	UpdatedAt           types.String `tfsdk:"updated_at"`
 }
@@ -61,29 +61,29 @@ func (d *InstallationsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 							MarkdownDescription: "The ID of the app installation.",
 							Computed:            true,
 						},
-						"app_slug": schema.StringAttribute{
-							MarkdownDescription: "The slug of the app.",
-							Computed:            true,
-						},
 						"client_id": schema.StringAttribute{
 							MarkdownDescription: "The client ID of the app.",
 							Computed:            true,
 						},
-						"repository_selection": schema.StringAttribute{
-							MarkdownDescription: "The type of repository selection for the app installation.",
+						"app_slug": schema.StringAttribute{
+							MarkdownDescription: "The slug of the app.",
 							Computed:            true,
 						},
 						"repositories_url": schema.StringAttribute{
 							MarkdownDescription: "The URL for the repositories of the app installation.",
 							Computed:            true,
 						},
-						"permissions": schema.MapAttribute{
-							MarkdownDescription: "The permissions for the app installation.",
+						"repository_selection": schema.StringAttribute{
+							MarkdownDescription: "The type of repository selection for the app installation.",
 							Computed:            true,
-							ElementType:         types.StringType,
 						},
 						"events": schema.ListAttribute{
 							MarkdownDescription: "The events for the app installation.",
+							Computed:            true,
+							ElementType:         types.StringType,
+						},
+						"permissions": schema.MapAttribute{
+							MarkdownDescription: "The permissions for the app installation.",
 							Computed:            true,
 							ElementType:         types.StringType,
 						},
