@@ -112,7 +112,7 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 
 	tflog.Info(ctx, "Configuring GitHub client settings", map[string]interface{}{
 		"enterprise_slug": entpriseSlug,
-		"token":           token,
+		"token_set":       token != "",
 	})
 
 	// initialize the client
