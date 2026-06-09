@@ -33,17 +33,12 @@ type installationResourceModel struct {
 	TargetOrg            types.String `tfsdk:"target_org"`
 	ClientID             types.String `tfsdk:"client_id"`
 	AppSlug              types.String `tfsdk:"app_slug"`
-	AppID                types.String `tfsdk:"app_id"`
 	RepositorySelection  types.String `tfsdk:"repository_selection"`
 	SelectedRepositories types.List   `tfsdk:"selected_repositories"`
 	Permissions          types.Map    `tfsdk:"permissions"`
 	Events               types.List   `tfsdk:"events"`
-	TargetID             types.String `tfsdk:"target_id"`
-	TargetType           types.String `tfsdk:"target_type"`
-	SingleFilePaths      types.List   `tfsdk:"single_file_paths"`
 	CreatedAt            types.String `tfsdk:"created_at"`
 	UpdatedAt            types.String `tfsdk:"updated_at"`
-	RepositoriesURL      types.String `tfsdk:"repositories_url"`
 }
 
 // Metadata returns the resource type name.
@@ -83,13 +78,6 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"app_id": schema.StringAttribute{
-				Computed:            true,
-				MarkdownDescription: "The ID of the GitHub App.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
 			"repository_selection": schema.StringAttribute{
 				Description: "Whether the installation has access to all repositories or only selected ones. Possible values are 'all' or 'selected'.",
 				Computed:    true, // It will be computed if it is left out
@@ -111,19 +99,6 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 				Computed:    true,
 				Description: "Events the installation is subscribed to.",
 			},
-			"target_id": schema.StringAttribute{
-				Computed:    true,
-				Description: "The ID of the target organization or user.",
-			},
-			"target_type": schema.StringAttribute{
-				Computed:    true,
-				Description: "The type of the target (e.g. Organization).",
-			},
-			"single_file_paths": schema.ListAttribute{
-				ElementType: types.StringType,
-				Computed:    true,
-				Description: "The paths to single files.",
-			},
 			"created_at": schema.StringAttribute{
 				Computed:    true,
 				Description: "The timestamp of when the installation was created.",
@@ -131,10 +106,6 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 			"updated_at": schema.StringAttribute{
 				Computed:    true,
 				Description: "The timestamp of when the installation was last updated.",
-			},
-			"repositories_url": schema.StringAttribute{
-				Computed:    true,
-				Description: "The URL for listing the installation's repositories.",
 			},
 		},
 	}
@@ -151,7 +122,7 @@ func (r *installationResource) Configure(ctx context.Context, req resource.Confi
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *GHClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *ghClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 
 		return
@@ -251,25 +222,17 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.Events)
 	resp.Diagnostics.Append(errDiags...)
 
-	singleFilePathsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.SingleFilePaths)
-	resp.Diagnostics.Append(errDiags...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	plan.ID = types.StringValue(fmt.Sprintf("%d", installation.GetID()))
 	plan.AppSlug = types.StringValue(installation.GetAppSlug())
-	plan.AppID = types.StringValue(fmt.Sprintf("%d", installation.GetAppID()))
 	plan.RepositorySelection = types.StringValue(installation.GetRepositorySelection())
 	plan.Permissions = permissionsVal
 	plan.Events = eventsVal
-	plan.TargetID = types.StringValue(fmt.Sprintf("%d", installation.GetTargetID()))
-	plan.TargetType = types.StringValue(installation.GetTargetType())
-	plan.SingleFilePaths = singleFilePathsVal
 	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().String())
 	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().String())
-	plan.RepositoriesURL = types.StringValue(installation.GetRepositoriesURL())
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, &plan)
@@ -346,26 +309,6 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	state.Events = eventsVal
 	state.CreatedAt = types.StringValue(foundInstallation.GetCreatedAt().String())
 	state.UpdatedAt = types.StringValue(foundInstallation.GetUpdatedAt().String())
-	state.RepositoriesURL = types.StringValue(foundInstallation.GetRepositoriesURL())
-
-	// These values are not returned by the "Snapshot" Enterprise call
-	// Only overwrite target/app attributes if they are returned by the API (not nil)
-	if foundInstallation.AppID != nil {
-		state.AppID = types.StringValue(fmt.Sprintf("%d", foundInstallation.GetAppID()))
-	}
-	if foundInstallation.TargetID != nil {
-		state.TargetID = types.StringValue(fmt.Sprintf("%d", foundInstallation.GetTargetID()))
-	}
-	if foundInstallation.TargetType != nil {
-		state.TargetType = types.StringValue(foundInstallation.GetTargetType())
-	}
-	if len(foundInstallation.SingleFilePaths) > 0 {
-		singleFilePathsVal, errDiags := types.ListValueFrom(ctx, types.StringType, foundInstallation.SingleFilePaths)
-		resp.Diagnostics.Append(errDiags...)
-		if !resp.Diagnostics.HasError() {
-			state.SingleFilePaths = singleFilePathsVal
-		}
-	}
 
 	// Update selected repositories if selection is "selected"
 	var selectedReposVal types.List

@@ -27,14 +27,9 @@ description: |-
 
 ### Read-Only
 
-- `app_id` (String) The ID of the GitHub App.
 - `app_slug` (String) The slug of the GitHub App.
 - `created_at` (String) The timestamp of when the installation was created.
 - `events` (List of String) Events the installation is subscribed to.
 - `id` (String) The ID of the GitHub App installation.
 - `permissions` (Map of String) The permissions granted to the installation.
-- `repositories_url` (String) The URL for listing the installation's repositories.
-- `single_file_paths` (List of String) The paths to single files.
-- `target_id` (String) The ID of the target organization or user.
-- `target_type` (String) The type of the target (e.g. Organization).
 - `updated_at` (String) The timestamp of when the installation was last updated.
