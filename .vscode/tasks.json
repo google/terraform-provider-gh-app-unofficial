@@ -1,0 +1,78 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Provider",
+            "type": "shell",
+            "command": "go install",
+            "problemMatcher": [
+                "$go"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Terraform Plan (Verification Example)",
+            "type": "shell",
+            "command": "terraform plan",
+            "options": {
+                "cwd": "${workspaceFolder}/examples/provider-install-verification",
+                "env": {
+                    "TF_CLI_CONFIG_FILE": "${workspaceFolder}/terraform.rc",
+                    "GITHUB_TOKEN": "${env:GITHUB_TOKEN}"
+                }
+            },
+            "dependsOn": "Build Provider",
+            "problemMatcher": []
+        },
+        {
+            "label": "Terraform Apply (Verification Example)",
+            "type": "shell",
+            "command": "terraform apply",
+            "options": {
+                "cwd": "${workspaceFolder}/examples/provider-install-verification",
+                "env": {
+                    "TF_CLI_CONFIG_FILE": "${workspaceFolder}/terraform.rc",
+                    "GITHUB_TOKEN": "${env:GITHUB_TOKEN}"
+                }
+            },
+            "dependsOn": "Build Provider",
+            "problemMatcher": []
+        },
+        {
+            "label": "Start Headless Debugger",
+            "type": "shell",
+            "command": "${workspaceFolder}/debug-terraform.sh",
+            "args": [
+                "${input:terraformCmd}"
+            ],
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "custom",
+                "pattern": {
+                    "regexp": "^$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^Starting Delve",
+                    "endsPattern": "^Debugger is listening on port 2345"
+                }
+            }
+        }
+    ],
+    "inputs": [
+        {
+            "id": "terraformCmd",
+            "description": "Terraform command to run",
+            "default": "plan",
+            "type": "pickString",
+            "options": [
+                "plan",
+                "apply",
+                "destroy"
+            ]
+        }
+    ]
+}
