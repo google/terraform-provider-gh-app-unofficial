@@ -15,40 +15,40 @@ import (
 )
 
 // Ensure the implementation satisfies the expected interfaces.
-var _ datasource.DataSource = &InstallationsDataSource{}
-var _ datasource.DataSourceWithConfigure = &InstallationsDataSource{}
+var _ datasource.DataSource = &installationsDataSource{}
+var _ datasource.DataSourceWithConfigure = &installationsDataSource{}
 
-// InstallationsDataSource is the data source implementation.
-type InstallationsDataSource struct {
-	client *GHClient
+// installationsDataSource is the data source implementation.
+type installationsDataSource struct {
+	client *ghClient
 }
 
 // Metadata returns the data source type name.
-func (d *InstallationsDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+func (d *installationsDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_installations"
 }
 
-// App represents the model of a single GitHub App Installation in the Terraform state.
-type App struct {
-	ID                  types.String `tfsdk:"id"` // This is the installation ID of the app
-	ClientID            types.String `tfsdk:"client_id"`
-	AppSlug             types.String `tfsdk:"app_slug"`
-	RepositoriesURL     types.String `tfsdk:"repositories_url"`
-	RepositorySelection types.String `tfsdk:"repository_selection"`
-	Events              types.List   `tfsdk:"events"`      // []String
-	Permissions         types.Map    `tfsdk:"permissions"` // map[string]String
-	CreatedAt           types.String `tfsdk:"created_at"`
-	UpdatedAt           types.String `tfsdk:"updated_at"`
+// app represents the model of a single GitHub App Installation in the Terraform state.
+type app struct {
+	ID                   types.String `tfsdk:"id"` // This is the installation ID of the app
+	ClientID             types.String `tfsdk:"client_id"`
+	AppSlug              types.String `tfsdk:"app_slug"`
+	SelectedRepositories types.List   `tfsdk:"selected_repositories"`
+	RepositorySelection  types.String `tfsdk:"repository_selection"`
+	Events               types.List   `tfsdk:"events"`      // []String
+	Permissions          types.Map    `tfsdk:"permissions"` // map[string]String
+	CreatedAt            types.String `tfsdk:"created_at"`
+	UpdatedAt            types.String `tfsdk:"updated_at"`
 }
 
-// Installation represents the data source model containing the target organization and its list of app installations.
-type Installation struct {
+// installation represents the data source model containing the target organization and its list of app installations.
+type installation struct {
 	TargetOrg     types.String `tfsdk:"target_org"`
-	Installations []App        `tfsdk:"installations"`
+	Installations []app        `tfsdk:"installations"`
 }
 
 // Schema defines the schema for the data source.
-func (d *InstallationsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *installationsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"target_org": schema.StringAttribute{
@@ -72,9 +72,10 @@ func (d *InstallationsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 							MarkdownDescription: "The slug of the app.",
 							Computed:            true,
 						},
-						"repositories_url": schema.StringAttribute{
-							MarkdownDescription: "The URL for the repositories of the app installation.",
+						"selected_repositories": schema.ListAttribute{
+							MarkdownDescription: "The list of repository names the installation has access to.",
 							Computed:            true,
+							ElementType:         types.StringType,
 						},
 						"repository_selection": schema.StringAttribute{
 							MarkdownDescription: "The type of repository selection for the app installation.",
@@ -106,17 +107,17 @@ func (d *InstallationsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 }
 
 // Configure adds the provider-configured GitHub client to the data source.
-func (d *InstallationsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *installationsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
 
-	client, ok := req.ProviderData.(*GHClient)
+	client, ok := req.ProviderData.(*ghClient)
 
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *GHClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *ghClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 
 		return
@@ -126,8 +127,8 @@ func (d *InstallationsDataSource) Configure(ctx context.Context, req datasource.
 }
 
 // Read refreshes the Terraform state with the latest data.
-func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	var data Installation
+func (d *installationsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data installation
 
 	// Terraform configuration data into data
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
@@ -146,7 +147,7 @@ func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadR
 		return
 	}
 
-	data.Installations = flattenInstallations(ctx, installations, &resp.Diagnostics)
+	data.Installations = flattenInstallations(ctx, client, enterpriseSlug, data.TargetOrg.ValueString(), installations, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -158,8 +159,8 @@ func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadR
 	}
 }
 
-func flattenInstallations(ctx context.Context, installations []*github.Installation, diags *diag.Diagnostics) []App {
-	result := make([]App, 0, len(installations))
+func flattenInstallations(ctx context.Context, client *github.Client, enterpriseSlug, targetOrg string, installations []*github.Installation, diags *diag.Diagnostics) []app {
+	result := make([]app, 0, len(installations))
 
 	for _, installation := range installations {
 		var permissionsMap map[string]string
@@ -182,16 +183,40 @@ func flattenInstallations(ctx context.Context, installations []*github.Installat
 			return nil
 		}
 
-		result = append(result, App{
-			ID:                  types.StringValue(strconv.FormatInt(installation.GetID(), 10)),
-			ClientID:            types.StringValue(installation.GetClientID()),
-			AppSlug:             types.StringValue(installation.GetAppSlug()),
-			RepositoriesURL:     types.StringValue(installation.GetRepositoriesURL()),
-			RepositorySelection: types.StringValue(installation.GetRepositorySelection()),
-			Events:              eventsVal,
-			Permissions:         permissionsVal,
-			CreatedAt:           types.StringValue(installation.GetCreatedAt().String()),
-			UpdatedAt:           types.StringValue(installation.GetUpdatedAt().String()),
+		var selectedReposVal types.List
+		if installation.GetRepositorySelection() == "selected" {
+			repos, _, err := client.Enterprise.ListRepositoriesForOrgAppInstallation(ctx, enterpriseSlug, targetOrg, installation.GetID(), nil)
+			if err != nil {
+				diags.AddError(
+					"Error Reading GitHub App Installation Repositories",
+					fmt.Sprintf("Could not list repositories for installation ID %d: %s", installation.GetID(), err.Error()),
+				)
+				return nil
+			}
+			var repoNames []string
+			for _, repo := range repos {
+				repoNames = append(repoNames, repo.GetName())
+			}
+			var errDiags diag.Diagnostics
+			selectedReposVal, errDiags = types.ListValueFrom(ctx, types.StringType, repoNames)
+			diags.Append(errDiags...)
+			if diags.HasError() {
+				return nil
+			}
+		} else {
+			selectedReposVal = types.ListNull(types.StringType)
+		}
+
+		result = append(result, app{
+			ID:                   types.StringValue(strconv.FormatInt(installation.GetID(), 10)),
+			ClientID:             types.StringValue(installation.GetClientID()),
+			AppSlug:              types.StringValue(installation.GetAppSlug()),
+			SelectedRepositories: selectedReposVal,
+			RepositorySelection:  types.StringValue(installation.GetRepositorySelection()),
+			Events:               eventsVal,
+			Permissions:          permissionsVal,
+			CreatedAt:            types.StringValue(installation.GetCreatedAt().String()),
+			UpdatedAt:            types.StringValue(installation.GetUpdatedAt().String()),
 		})
 	}
 

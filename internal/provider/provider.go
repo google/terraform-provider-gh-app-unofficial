@@ -18,11 +18,11 @@ import (
 	"github.com/google/go-github/v88/github"
 )
 
-// Ensure GHAppProvider satisfies various provider interfaces.
-var _ provider.Provider = &GHAppProvider{}
+// Ensure ghAppProvider satisfies various provider interfaces.
+var _ provider.Provider = &ghAppProvider{}
 
-// GHAppProvider defines the provider implementation.
-type GHAppProvider struct {
+// ghAppProvider defines the provider implementation.
+type ghAppProvider struct {
 	// version is set to the provider version on release, "dev" when the
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
@@ -31,18 +31,18 @@ type GHAppProvider struct {
 
 func New(version string) func() provider.Provider {
 	return func() provider.Provider {
-		return &GHAppProvider{
+		return &ghAppProvider{
 			version: version,
 		}
 	}
 }
 
-func (p *GHAppProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+func (p *ghAppProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = "ghapp"
 	resp.Version = p.version
 }
 
-func (p *GHAppProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+func (p *ghAppProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"token": schema.StringAttribute{
@@ -63,12 +63,12 @@ type ghProviderModel struct {
 	EnterpriseSlug types.String `tfsdk:"enterprise_slug"`
 }
 
-type GHClient struct {
+type ghClient struct {
 	EnterpriseSlug string
 	Client         *github.Client
 }
 
-func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+func (p *ghAppProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var config ghProviderModel
 	diags := req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
@@ -113,15 +113,15 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: token},
 	)
-	ghClient, err := github.NewClient(github.WithHTTPClient(oauth2.NewClient(ctx, ts)))
+	githubClient, err := github.NewClient(github.WithHTTPClient(oauth2.NewClient(ctx, ts)))
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create GitHub client: %s", err))
 		return
 	}
 
-	client := &GHClient{
+	client := &ghClient{
 		EnterpriseSlug: entpriseSlug,
-		Client:         ghClient,
+		Client:         githubClient,
 	}
 
 	// make the data available to data sources and resources
@@ -129,16 +129,16 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	resp.ResourceData = client
 }
 
-func (p *GHAppProvider) Resources(ctx context.Context) []func() resource.Resource {
+func (p *ghAppProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewExampleResource,
 	}
 }
 
-func (p *GHAppProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
+func (p *ghAppProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		func() datasource.DataSource {
-			return &InstallationsDataSource{}
+			return &installationsDataSource{}
 		},
 	}
 }
