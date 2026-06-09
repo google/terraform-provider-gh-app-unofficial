@@ -1,9 +1,9 @@
 terraform {
   required_providers {
-    gh-app = {
-      source = "registry.terraform.io/google/gh-app-unofficial"
+    ghapp = {
+      source = "registry.terraform.io/google/ghapp-unofficial"
     }
   }
 }
 
-provider "gh-app" {}
+provider "ghapp" {}
