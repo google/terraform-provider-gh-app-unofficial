@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"golang.org/x/oauth2"
 
 	"github.com/google/go-github/v88/github"
@@ -109,12 +110,20 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		return
 	}
 
+	tflog.Info(ctx, "Configuring GitHub client settings", map[string]interface{}{
+		"enterprise_slug": entpriseSlug,
+		"token_set":       token != "",
+	})
+
 	// initialize the client
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: token},
 	)
 	ghClient, err := github.NewClient(github.WithHTTPClient(oauth2.NewClient(ctx, ts)))
 	if err != nil {
+		tflog.Error(ctx, "Failed to create GitHub client", map[string]interface{}{
+			"error": err.Error(),
+		})
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create GitHub client: %s", err))
 		return
 	}
@@ -127,6 +136,10 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	// make the data available to data sources and resources
 	resp.DataSourceData = client
 	resp.ResourceData = client
+
+	tflog.Info(ctx, "Configured client", map[string]interface{}{
+		"enterprise_slug": entpriseSlug,
+	})
 }
 
 func (p *GHAppProvider) Resources(ctx context.Context) []func() resource.Resource {
