@@ -15,16 +15,16 @@ import (
 )
 
 // Ensure the implementation satisfies the expected interfaces.
-var _ datasource.DataSource = &InstallationsDataSource{}
-var _ datasource.DataSourceWithConfigure = &InstallationsDataSource{}
+var _ datasource.DataSource = &installationsDataSource{}
+var _ datasource.DataSourceWithConfigure = &installationsDataSource{}
 
-// InstallationsDataSource is the data source implementation.
-type InstallationsDataSource struct {
+// installationsDataSource is the data source implementation.
+type installationsDataSource struct {
 	client *GHClient
 }
 
 // Metadata returns the data source type name.
-func (d *InstallationsDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+func (d *installationsDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_installations"
 }
 
@@ -48,7 +48,7 @@ type installation struct {
 }
 
 // Schema defines the schema for the data source.
-func (d *InstallationsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *installationsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"target_org": schema.StringAttribute{
@@ -107,7 +107,7 @@ func (d *InstallationsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 }
 
 // Configure adds the provider-configured GitHub client to the data source.
-func (d *InstallationsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *installationsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured. req.ProviderData
 	// can be nil during early lifecycle phases (such as terraform validate or
 	// initial schema discovery). Returning early without adding a diagnostic
@@ -139,7 +139,7 @@ func (d *InstallationsDataSource) Configure(ctx context.Context, req datasource.
 }
 
 // Read refreshes the Terraform state with the latest data.
-func (d *InstallationsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *installationsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data installation
 
 	// Terraform configuration data into data
