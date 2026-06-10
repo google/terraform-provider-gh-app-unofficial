@@ -20,7 +20,7 @@ var _ datasource.DataSourceWithConfigure = &installationsDataSource{}
 
 // installationsDataSource is the data source implementation.
 type installationsDataSource struct {
-	client *ghClient
+	client *GHClient
 }
 
 // Metadata returns the data source type name.
@@ -116,12 +116,12 @@ func (d *installationsDataSource) Configure(ctx context.Context, req datasource.
 		return
 	}
 
-	client, ok := req.ProviderData.(*ghClient)
+	client, ok := req.ProviderData.(*GHClient)
 
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *ghClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *GHClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 
 		return

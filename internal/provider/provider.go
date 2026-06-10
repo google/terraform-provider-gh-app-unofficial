@@ -63,7 +63,7 @@ type ghProviderModel struct {
 	EnterpriseSlug types.String `tfsdk:"enterprise_slug"`
 }
 
-type ghClient struct {
+type GHClient struct {
 	EnterpriseSlug string
 	Client         *github.Client
 }
@@ -113,15 +113,15 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: token},
 	)
-	githubClient, err := github.NewClient(github.WithHTTPClient(oauth2.NewClient(ctx, ts)))
+	ghClient, err := github.NewClient(github.WithHTTPClient(oauth2.NewClient(ctx, ts)))
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create GitHub client: %s", err))
 		return
 	}
 
-	client := &ghClient{
+	client := &GHClient{
 		EnterpriseSlug: entpriseSlug,
-		Client:         githubClient,
+		Client:         ghClient,
 	}
 
 	// make the data available to data sources and resources
