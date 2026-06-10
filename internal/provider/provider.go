@@ -18,11 +18,11 @@ import (
 	"github.com/google/go-github/v88/github"
 )
 
-// Ensure ghAppProvider satisfies various provider interfaces.
-var _ provider.Provider = &ghAppProvider{}
+// Ensure GHAppProvider satisfies various provider interfaces.
+var _ provider.Provider = &GHAppProvider{}
 
-// ghAppProvider defines the provider implementation.
-type ghAppProvider struct {
+// GHAppProvider defines the provider implementation.
+type GHAppProvider struct {
 	// version is set to the provider version on release, "dev" when the
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
@@ -31,18 +31,18 @@ type ghAppProvider struct {
 
 func New(version string) func() provider.Provider {
 	return func() provider.Provider {
-		return &ghAppProvider{
+		return &GHAppProvider{
 			version: version,
 		}
 	}
 }
 
-func (p *ghAppProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+func (p *GHAppProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = "ghapp"
 	resp.Version = p.version
 }
 
-func (p *ghAppProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+func (p *GHAppProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"token": schema.StringAttribute{
@@ -68,7 +68,7 @@ type ghClient struct {
 	Client         *github.Client
 }
 
-func (p *ghAppProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var config ghProviderModel
 	diags := req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
@@ -129,13 +129,13 @@ func (p *ghAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	resp.ResourceData = client
 }
 
-func (p *ghAppProvider) Resources(ctx context.Context) []func() resource.Resource {
+func (p *GHAppProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewExampleResource,
 	}
 }
 
-func (p *ghAppProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
+func (p *GHAppProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		func() datasource.DataSource {
 			return &installationsDataSource{}

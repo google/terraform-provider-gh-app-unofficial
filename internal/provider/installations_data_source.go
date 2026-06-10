@@ -108,6 +108,10 @@ func (d *installationsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 
 // Configure adds the provider-configured GitHub client to the data source.
 func (d *installationsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	// Prevent panic if the provider has not been configured. req.ProviderData
+	// can be nil during early lifecycle phases (such as terraform validate or
+	// initial schema discovery). Returning early without adding a diagnostic
+	// error allows the framework to proceed safely.
 	if req.ProviderData == nil {
 		return
 	}
