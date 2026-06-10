@@ -121,6 +121,9 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	)
 	ghClient, err := github.NewClient(github.WithHTTPClient(oauth2.NewClient(ctx, ts)))
 	if err != nil {
+		tflog.Error(ctx, "Failed to create GitHub client", map[string]interface{}{
+			"error": err.Error(),
+		})
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create GitHub client: %s", err))
 		return
 	}

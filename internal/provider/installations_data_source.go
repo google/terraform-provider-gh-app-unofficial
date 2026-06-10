@@ -119,6 +119,10 @@ func (d *installationsDataSource) Configure(ctx context.Context, req datasource.
 	client, ok := req.ProviderData.(*GHClient)
 
 	if !ok {
+		tflog.Error(ctx, "Unexpected Data Source Configure Type", map[string]interface{}{
+			"expected": "*GHClient",
+			"got":      fmt.Sprintf("%T", req.ProviderData),
+		})
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
 			fmt.Sprintf("Expected *GHClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
@@ -129,7 +133,9 @@ func (d *installationsDataSource) Configure(ctx context.Context, req datasource.
 
 	d.client = client
 
-	tflog.Info(ctx, "Configured installations data source client")
+	tflog.Info(ctx, "Configured installations data source client", map[string]interface{}{
+		"enterprise_slug": client.EnterpriseSlug,
+	})
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -153,6 +159,11 @@ func (d *installationsDataSource) Read(ctx context.Context, req datasource.ReadR
 
 	installations, _, err := client.Enterprise.ListAppInstallations(ctx, enterpriseSlug, data.TargetOrg.ValueString(), nil)
 	if err != nil {
+		tflog.Error(ctx, "Failed to list installations", map[string]interface{}{
+			"error":           err.Error(),
+			"enterprise_slug": enterpriseSlug,
+			"target_org":      data.TargetOrg.ValueString(),
+		})
 		resp.Diagnostics.AddError("Failed to list installations", err.Error())
 		return
 	}
@@ -203,6 +214,12 @@ func flattenInstallations(ctx context.Context, client *github.Client, enterprise
 		if installation.GetRepositorySelection() == "selected" {
 			repos, _, err := client.Enterprise.ListRepositoriesForOrgAppInstallation(ctx, enterpriseSlug, targetOrg, installation.GetID(), nil)
 			if err != nil {
+				tflog.Error(ctx, "Failed to list repositories for installation", map[string]interface{}{
+					"error":           err.Error(),
+					"installation_id": installation.GetID(),
+					"enterprise_slug": enterpriseSlug,
+					"target_org":      targetOrg,
+				})
 				diags.AddError(
 					"Error Reading GitHub App Installation Repositories",
 					fmt.Sprintf("Could not list repositories for installation ID %d: %s", installation.GetID(), err.Error()),
