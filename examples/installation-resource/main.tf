@@ -39,8 +39,8 @@ provider "ghapp" {
 }
 
 resource "ghapp_installation" "test-app" {
-  target_org          = var.target_org
-  client_id           = var.client_id
+  target_org            = var.target_org
+  client_id             = var.client_id
   repository_selection  = var.repository_selection
   selected_repositories = var.selected_repositories
 }
