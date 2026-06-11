@@ -33,10 +33,10 @@ type installationResourceModel struct {
 	TargetOrg            types.String `tfsdk:"target_org"`
 	ClientID             types.String `tfsdk:"client_id"`
 	AppSlug              types.String `tfsdk:"app_slug"`
-	RepositorySelection  types.String `tfsdk:"repository_selection"`
 	SelectedRepositories types.List   `tfsdk:"selected_repositories"`
-	Permissions          types.Map    `tfsdk:"permissions"`
+	RepositorySelection  types.String `tfsdk:"repository_selection"`
 	Events               types.List   `tfsdk:"events"`
+	Permissions          types.Map    `tfsdk:"permissions"`
 	CreatedAt            types.String `tfsdk:"created_at"`
 	UpdatedAt            types.String `tfsdk:"updated_at"`
 }
@@ -52,7 +52,7 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "The ID of the GitHub App installation.",
+				MarkdownDescription: "The ID of the app installation.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -65,47 +65,47 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 				},
 			},
 			"client_id": schema.StringAttribute{
-				Description: "The client ID of the GitHub App to install.",
-				Required:    true,
+				MarkdownDescription: "The client ID of the app.",
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"app_slug": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "The slug of the GitHub App.",
+				MarkdownDescription: "The slug of the app.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"repository_selection": schema.StringAttribute{
-				Description: "Whether the installation has access to all repositories or only selected ones. Possible values are 'all' or 'selected'.",
-				Computed:    true, // It will be computed if it is left out
-				Optional:    true,
-				Default:     stringdefault.StaticString("all"),
-			},
 			"selected_repositories": schema.ListAttribute{
-				Description: "The list of repository names the installation has access to. Required when repository_selection is 'selected'.",
-				Optional:    true,
-				ElementType: types.StringType,
+				MarkdownDescription: "The list of repository names the installation has access to.",
+				Optional:            true,
+				ElementType:         types.StringType,
 			},
-			"permissions": schema.MapAttribute{
-				ElementType: types.StringType,
-				Computed:    true,
-				Description: "The permissions granted to the installation.",
+			"repository_selection": schema.StringAttribute{
+				MarkdownDescription: "The type of repository selection for the app installation.",
+				Computed:            true,
+				Optional:            true,
+				Default:             stringdefault.StaticString("all"),
 			},
 			"events": schema.ListAttribute{
-				ElementType: types.StringType,
-				Computed:    true,
-				Description: "Events the installation is subscribed to.",
+				MarkdownDescription: "The events for the app installation.",
+				Computed:            true,
+				ElementType:         types.StringType,
+			},
+			"permissions": schema.MapAttribute{
+				MarkdownDescription: "The permissions for the app installation.",
+				Computed:            true,
+				ElementType:         types.StringType,
 			},
 			"created_at": schema.StringAttribute{
-				Computed:    true,
-				Description: "The timestamp of when the installation was created.",
+				Computed:            true,
+				MarkdownDescription: "The creation timestamp of the app installation.",
 			},
 			"updated_at": schema.StringAttribute{
-				Computed:    true,
-				Description: "The timestamp of when the installation was last updated.",
+				Computed:            true,
+				MarkdownDescription: "The update timestamp of the app installation.",
 			},
 		},
 	}

@@ -17,19 +17,19 @@ description: |-
 
 ### Required
 
-- `client_id` (String) The client ID of the GitHub App to install.
+- `client_id` (String) The client ID of the app.
 - `target_org` (String) The organization name where the GitHub App will be installed.
 
 ### Optional
 
-- `repository_selection` (String) Whether the installation has access to all repositories or only selected ones. Possible values are 'all' or 'selected'.
-- `selected_repositories` (List of String) The list of repository names the installation has access to. Required when repository_selection is 'selected'.
+- `repository_selection` (String) The type of repository selection for the app installation.
+- `selected_repositories` (List of String) The list of repository names the installation has access to.
 
 ### Read-Only
 
-- `app_slug` (String) The slug of the GitHub App.
-- `created_at` (String) The timestamp of when the installation was created.
-- `events` (List of String) Events the installation is subscribed to.
-- `id` (String) The ID of the GitHub App installation.
-- `permissions` (Map of String) The permissions granted to the installation.
-- `updated_at` (String) The timestamp of when the installation was last updated.
+- `app_slug` (String) The slug of the app.
+- `created_at` (String) The creation timestamp of the app installation.
+- `events` (List of String) The events for the app installation.
+- `id` (String) The ID of the app installation.
+- `permissions` (Map of String) The permissions for the app installation.
+- `updated_at` (String) The update timestamp of the app installation.
