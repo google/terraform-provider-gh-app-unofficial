@@ -67,10 +67,17 @@ make testacc
 
 ### Prerequisites
 *   Install the [Go extension for VS Code](https://marketplace.visualstudio.com/items?itemName=golang.Go).
-*   Set `GITHUB_TOKEN` in your environment, or create a `.env` file in the workspace root:
+*   Install the Delve debugger: `go install github.com/go-delve/delve/cmd/dlv@latest`
+*   Create a `.env` file in the workspace root with your GitHub App credentials and test configurations:
     ```env
-    GITHUB_TOKEN="your_github_token_here"
+    GITHUB_APP_ID="YOUR_GITHUB_APP_ID"
+    GITHUB_APP_PRIVATE_KEY_PATH="~/path/to/your/private-key.pem"
+    GITHUB_APP_INSTALLATION_ID="YOUR_GITHUB_APP_INSTALLATION_ID"
+
+    # (Optional) Target example folder to run/debug. Defaults to examples/provider-install-verification
+    TF_EXAMPLE_DIR="examples/installations-data-source"
     ```
+    *(Note: You can either create your own GitHub App for testing or obtain credentials/keys for a shared test App from the repository owner).*
 *   Create a `terraform.rc` file in the workspace root to point to your local Go bin directory (e.g. `~/go/bin`):
     ```hcl
     provider_installation {

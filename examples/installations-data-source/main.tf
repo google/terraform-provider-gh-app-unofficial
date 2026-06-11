@@ -6,12 +6,24 @@ terraform {
   }
 }
 
+variable "enterprise_slug" {
+  type        = string
+  description = "The enterprise slug."
+  default     = "example-enterprise"
+}
+
+variable "target_org" {
+  type        = string
+  description = "The target GitHub organization slug to list installations from."
+  default     = "example-org"
+}
+
 provider "ghapp" {
-  enterprise_slug = "example-enterprise"
+  enterprise_slug = var.enterprise_slug
 }
 
 data "ghapp_installations" "example" {
-  target_org = "example-org"
+  target_org = var.target_org
 }
 
 output "installations" {

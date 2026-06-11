@@ -18,6 +18,17 @@ if [ -f .env ]; then
   done < .env
 fi
 
+# Generate GITHUB_TOKEN using get-token utility if not already set
+if [ -z "$GITHUB_TOKEN" ]; then
+  echo "GITHUB_TOKEN is not set. Attempting to generate a token using get-token utility..."
+  if TOKEN=$(go run ./cmd/get-token 2>/dev/null); then
+    export GITHUB_TOKEN="$TOKEN"
+    echo "Successfully generated and set GITHUB_TOKEN."
+  else
+    echo "Warning: get-token utility failed to generate token. You may need to set GITHUB_TOKEN manually."
+  fi
+fi
+
 # Cleanup function to kill delve on exit
 DLV_PID=""
 cleanup() {
@@ -33,7 +44,7 @@ trap cleanup EXIT INT TERM
 
 # Start Delve headless (compiles and runs the provider in debug mode)
 echo "Starting Delve debugger in headless mode..."
-dlv debug -o ./debug_bin --headless --listen=:2345 --api-version=2 --accept-multiclient --continue --log -- -debug > dlv.log 2>&1 &
+dlv debug --output ./debug_bin --headless --listen=:2345 --api-version=2 --accept-multiclient --continue --log -- -debug > dlv.log 2>&1 &
 DLV_PID=$!
 
 # Wait for the reattach env var to be printed by the provider
@@ -69,8 +80,10 @@ read -r
 
 export TF_REATTACH_PROVIDERS="$TF_REATTACH"
 
-# Run terraform in the verification directory (default)
-cd examples/provider-install-verification
+# Run terraform in the target example directory (defaults to examples/provider-install-verification)
+TARGET_DIR="${TF_EXAMPLE_DIR:-examples/provider-install-verification}"
+echo "Changing directory to $TARGET_DIR"
+cd "$TARGET_DIR"
 
 echo "Running: terraform $@"
 terraform "$@"
