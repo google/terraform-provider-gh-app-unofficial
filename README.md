@@ -109,8 +109,8 @@ To debug unit or acceptance tests:
 ### Troubleshooting: "operation not permitted" (Linux)
 If the debugger fails to launch with `operation not permitted`, run:
 ```shell
-sudo sysctl -w kernel.yama.ptrace_scope=1
+sudo sysctl -w kernel.yama.ptrace_scope=0
 ```
-*(Resets on reboot. To make permanent, add `kernel.yama.ptrace_scope = 1` to `/etc/sysctl.d/10-ptrace.conf`)*
+*(Resets on reboot. To make permanent, add `kernel.yama.ptrace_scope = 0` to `/etc/sysctl.d/10-ptrace.conf`)*
 
 
