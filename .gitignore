@@ -45,4 +45,6 @@ terraform.rc
 *.pem
 *.tfvars
 *.tfvars.json
+.terraform.tfstate.lock.info
+
 
