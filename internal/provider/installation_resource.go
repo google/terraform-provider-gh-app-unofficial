@@ -83,7 +83,7 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 				},
 			},
 			"selected_repositories": schema.ListAttribute{
-				MarkdownDescription: "The list of repository names the installation has access to. Required when repository_selection is set to 'selected'.",
+				MarkdownDescription: "The list of repository names the installation has access to. Only valid and required when repository_selection is set to 'selected'.",
 				Optional:            true,
 				ElementType:         types.StringType,
 			},

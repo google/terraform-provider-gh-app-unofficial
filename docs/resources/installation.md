@@ -23,7 +23,7 @@ description: |-
 ### Optional
 
 - `repository_selection` (String) The type of repository selection for the app installation. Either set to 'all' or 'selected'.
-- `selected_repositories` (List of String) The list of repository names the installation has access to. Required when repository_selection is set to 'selected'.
+- `selected_repositories` (List of String) The list of repository names the installation has access to. Only valid and required when repository_selection is set to 'selected'.
 
 ### Read-Only
 
