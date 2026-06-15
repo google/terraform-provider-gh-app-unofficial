@@ -6,20 +6,24 @@ import (
 	"fmt"
 
 	"github.com/google/go-github/v88/github"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
 var (
-	_ resource.Resource              = &installationResource{}
-	_ resource.ResourceWithConfigure = &installationResource{}
+	_ resource.Resource                   = &installationResource{}
+	_ resource.ResourceWithConfigure      = &installationResource{}
+	_ resource.ResourceWithValidateConfig = &installationResource{}
 )
 
 // installationResource is the resource implementation.
@@ -79,15 +83,18 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 				},
 			},
 			"selected_repositories": schema.ListAttribute{
-				MarkdownDescription: "The list of repository names the installation has access to.",
+				MarkdownDescription: "The list of repository names the installation has access to. Required when repository_selection is set to 'selected'.",
 				Optional:            true,
 				ElementType:         types.StringType,
 			},
 			"repository_selection": schema.StringAttribute{
-				MarkdownDescription: "The type of repository selection for the app installation.",
+				MarkdownDescription: "The type of repository selection for the app installation. Either set to 'all' or 'selected'.",
 				Computed:            true,
 				Optional:            true,
 				Default:             stringdefault.StaticString("all"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("selected", "all"),
+				},
 			},
 			"events": schema.ListAttribute{
 				MarkdownDescription: "The events for the app installation.",
@@ -121,8 +128,8 @@ func (r *installationResource) Configure(ctx context.Context, req resource.Confi
 
 	if !ok {
 		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *ghClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *GHClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 
 		return
@@ -131,48 +138,61 @@ func (r *installationResource) Configure(ctx context.Context, req resource.Confi
 	r.client = client
 }
 
+func (r *installationResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config installationResourceModel
+
+	diags := req.Config.Get(ctx, &config)
+	resp.Diagnostics.Append(diags...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Determine the effective repository selection (handling the default of "all" if Null)
+	var repoSelection string
+	if config.RepositorySelection.IsUnknown() {
+		// If it's unknown, we can't perform cross-attribute validation yet.
+		return
+	} else if config.RepositorySelection.IsNull() {
+		// Default value from schema
+		repoSelection = "all"
+	} else {
+		repoSelection = config.RepositorySelection.ValueString()
+	}
+
+	switch repoSelection {
+	case "selected":
+		if config.SelectedRepositories.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("selected_repositories"),
+				"Missing Selected Repositories",
+				"The selected_repositories attribute must be set when repository_selection is 'selected'.",
+			)
+		} else if !config.SelectedRepositories.IsUnknown() && len(config.SelectedRepositories.Elements()) == 0 {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("selected_repositories"),
+				"Empty Selected Repositories",
+				"The selected_repositories attribute must contain at least one repository when repository_selection is 'selected'.",
+			)
+		}
+
+	case "all":
+		if !config.SelectedRepositories.IsNull() && !config.SelectedRepositories.IsUnknown() && len(config.SelectedRepositories.Elements()) > 0 {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("selected_repositories"),
+				"Invalid Selected Repositories",
+				"The selected_repositories attribute must not be set when repository_selection is 'all'.",
+			)
+		}
+	}
+}
+
 // Create creates the resource and sets the initial Terraform state.
 func (r *installationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	// Retrieve values from plan
 	var plan installationResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// Validate the values
-	if plan.TargetOrg.IsNull() || plan.TargetOrg.IsUnknown() {
-		resp.Diagnostics.AddError(
-			"Missing or Unknown Target Organization",
-			"The target_org attribute must be set.",
-		)
-	}
-
-	if plan.ClientID.IsNull() || plan.ClientID.IsUnknown() {
-		resp.Diagnostics.AddError(
-			"Missing or Unknown Client ID",
-			"The client_id attribute must be set.",
-		)
-	}
-
-	if plan.RepositorySelection.ValueString() == "selected" && (plan.SelectedRepositories.IsNull() || plan.SelectedRepositories.IsUnknown()) {
-		resp.Diagnostics.AddError(
-			"Missing or Unknown Selected Repositories",
-			"The selected_repositories attribute must be set when repository_selection is 'selected'.",
-		)
-	}
-
-	if !plan.RepositorySelection.IsNull() && !plan.RepositorySelection.IsUnknown() {
-		val := plan.RepositorySelection.ValueString()
-		if val != "selected" && val != "all" {
-			resp.Diagnostics.AddError(
-				"Invalid Repository Selection",
-				"The repository_selection attribute must be either 'selected' or 'all'.",
-			)
-		}
-	}
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -212,8 +232,20 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	var permissionsMap map[string]string
 	if installation.Permissions != nil {
 		pb, err := json.Marshal(installation.Permissions)
-		if err == nil {
-			_ = json.Unmarshal(pb, &permissionsMap)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Marshalling Permissions",
+				fmt.Sprintf("Could not marshal installation permissions: %s", err.Error()),
+			)
+			return
+		}
+		err = json.Unmarshal(pb, &permissionsMap)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Unmarshalling Permissions",
+				fmt.Sprintf("Could not unmarshal installation permissions: %s", err.Error()),
+			)
+			return
 		}
 	}
 	permissionsVal, errDiags := types.MapValueFrom(ctx, types.StringType, permissionsMap)
@@ -288,8 +320,20 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	var permissionsMap map[string]string
 	if foundInstallation.Permissions != nil {
 		pb, err := json.Marshal(foundInstallation.Permissions)
-		if err == nil {
-			_ = json.Unmarshal(pb, &permissionsMap)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Marshalling Permissions",
+				fmt.Sprintf("Could not marshal installation permissions: %s", err.Error()),
+			)
+			return
+		}
+		err = json.Unmarshal(pb, &permissionsMap)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Unmarshalling Permissions",
+				fmt.Sprintf("Could not unmarshal installation permissions: %s", err.Error()),
+			)
+			return
 		}
 	}
 	permissionsVal, errDiags := types.MapValueFrom(ctx, types.StringType, permissionsMap)
