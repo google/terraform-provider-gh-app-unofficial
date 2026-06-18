@@ -138,6 +138,9 @@ func (r *installationResource) Configure(ctx context.Context, req resource.Confi
 	r.client = client
 }
 
+// ValidateConfig runs during validation and planning (e.g., `terraform validate` and `terraform plan`).
+// Note: If attributes are Unknown at this stage (e.g., if they reference other resources), cross-attribute
+// validation is skipped here and instead validated at apply time by the remote API.
 func (r *installationResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var config installationResourceModel
 
