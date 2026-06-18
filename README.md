@@ -91,7 +91,7 @@ make testacc
 ### Running & Testing (Dev Overrides)
 To test local changes with Terraform without breakpoints:
 1.  Use `Ctrl+Shift+P` -> **Run Task** -> select **`Terraform Plan (Verification Example)`** or **`Terraform Apply (Verification Example)`**.
-2.  This automatically builds the provider and runs Terraform using the local `terraform.rc` configuration.
+2.  This automatically builds the provider and runs Terraform using the local dev configuration.
 
 ### Debugging the Provider
 To debug the provider with breakpoints (integrated VS Code workflow):
