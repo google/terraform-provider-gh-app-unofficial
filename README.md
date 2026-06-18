@@ -78,7 +78,7 @@ make testacc
     TF_EXAMPLE_DIR="examples/installations-data-source"
     ```
     *(Note: You can either create your own GitHub App for testing or obtain credentials/keys for a shared test App from the repository owner).*
-*   Create a `terraform.rc` file in the workspace root to point to your local Go bin directory (e.g. `~/go/bin`):
+*   Create a `terraform.rc` file (or modify an existing one at `~/.terraformrc`) in the workspace root to point to your local Go bin directory (e.g. `~/go/bin`):
     ```hcl
     provider_installation {
       dev_overrides {
