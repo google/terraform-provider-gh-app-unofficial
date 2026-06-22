@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/google/go-github/v88/github"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -190,7 +191,16 @@ func (r *installationResource) ValidateConfig(ctx context.Context, req resource.
 	}
 }
 
-func (r *installationResource) createOrUpdate(ctx context.Context, plan *installationResourceModel, diagnostics *diag.Diagnostics) {
+// Create creates the resource and sets the initial Terraform state.
+func (r *installationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	// Retrieve values from plan
+	var plan installationResourceModel
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Generate API request body from plan
 	client := r.client.Client
 	enterpriseSlug := r.client.EnterpriseSlug
@@ -199,8 +209,8 @@ func (r *installationResource) createOrUpdate(ctx context.Context, plan *install
 	var selectedRepos []string
 	if !plan.SelectedRepositories.IsNull() && !plan.SelectedRepositories.IsUnknown() {
 		diags := plan.SelectedRepositories.ElementsAs(ctx, &selectedRepos, false)
-		diagnostics.Append(diags...)
-		if diagnostics.HasError() {
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
 			return
 		}
 	}
@@ -218,7 +228,7 @@ func (r *installationResource) createOrUpdate(ctx context.Context, plan *install
 
 	installation, _, err := client.Enterprise.InstallApp(ctx, enterpriseSlug, targetOrg, ghReq)
 	if err != nil {
-		diagnostics.AddError("Failed to install app", err.Error())
+		resp.Diagnostics.AddError("Failed to install app", err.Error())
 		return
 	}
 
@@ -228,7 +238,7 @@ func (r *installationResource) createOrUpdate(ctx context.Context, plan *install
 		// Dynamically convert the InstallationPermissions struct to map[string]string through a JSON marshal/unmarshal round-trip
 		pb, err := json.Marshal(installation.Permissions)
 		if err != nil {
-			diagnostics.AddError(
+			resp.Diagnostics.AddError(
 				"Error Marshalling Permissions",
 				fmt.Sprintf("Could not marshal installation permissions: %s", err.Error()),
 			)
@@ -236,7 +246,7 @@ func (r *installationResource) createOrUpdate(ctx context.Context, plan *install
 		}
 		err = json.Unmarshal(pb, &permissionsMap)
 		if err != nil {
-			diagnostics.AddError(
+			resp.Diagnostics.AddError(
 				"Error Unmarshalling Permissions",
 				fmt.Sprintf("Could not unmarshal installation permissions: %s", err.Error()),
 			)
@@ -244,12 +254,12 @@ func (r *installationResource) createOrUpdate(ctx context.Context, plan *install
 		}
 	}
 	permissionsVal, errDiags := types.MapValueFrom(ctx, types.StringType, permissionsMap)
-	diagnostics.Append(errDiags...)
+	resp.Diagnostics.Append(errDiags...)
 
 	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.Events)
-	diagnostics.Append(errDiags...)
+	resp.Diagnostics.Append(errDiags...)
 
-	if diagnostics.HasError() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -260,22 +270,6 @@ func (r *installationResource) createOrUpdate(ctx context.Context, plan *install
 	plan.Events = eventsVal
 	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().String())
 	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().String())
-}
-
-// Create creates the resource and sets the initial Terraform state.
-func (r *installationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	// Retrieve values from plan
-	var plan installationResourceModel
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	r.createOrUpdate(ctx, &plan, &resp.Diagnostics)
-	if resp.Diagnostics.HasError() {
-		return
-	}
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, &plan)
@@ -407,10 +401,78 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	r.createOrUpdate(ctx, &plan, &resp.Diagnostics)
+	instIDStr := plan.ID.ValueString()
+	instID, err := strconv.ParseInt(instIDStr, 10, 64)
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid installation ID", err.Error())
+		return
+	}
+
+	client := r.client.Client
+	enterpriseSlug := r.client.EnterpriseSlug
+	targetOrg := plan.TargetOrg.ValueString()
+
+	var selectedRepos []string
+	if !plan.SelectedRepositories.IsNull() && !plan.SelectedRepositories.IsUnknown() {
+		diags := plan.SelectedRepositories.ElementsAs(ctx, &selectedRepos, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	repoSelection := "all"
+	if !plan.RepositorySelection.IsNull() && !plan.RepositorySelection.IsUnknown() {
+		repoSelection = plan.RepositorySelection.ValueString()
+	}
+
+	opts := github.UpdateAppInstallationRepositoriesRequest{
+		RepositorySelection: &repoSelection,
+		Repositories:        selectedRepos,
+	}
+
+	installation, _, err := client.Enterprise.UpdateAppInstallationRepositories(ctx, enterpriseSlug, targetOrg, instID, opts)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to update app installation repositories", err.Error())
+		return
+	}
+
+	// Map response body to schema and populate Computed attribute values
+	var permissionsMap map[string]string
+	if installation.Permissions != nil {
+		pb, err := json.Marshal(installation.Permissions)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Marshalling Permissions",
+				fmt.Sprintf("Could not marshal installation permissions: %s", err.Error()),
+			)
+			return
+		}
+		err = json.Unmarshal(pb, &permissionsMap)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Unmarshalling Permissions",
+				fmt.Sprintf("Could not unmarshal installation permissions: %s", err.Error()),
+			)
+			return
+		}
+	}
+	permissionsVal, errDiags := types.MapValueFrom(ctx, types.StringType, permissionsMap)
+	resp.Diagnostics.Append(errDiags...)
+
+	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.Events)
+	resp.Diagnostics.Append(errDiags...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	plan.AppSlug = types.StringValue(installation.GetAppSlug())
+	plan.RepositorySelection = types.StringValue(installation.GetRepositorySelection())
+	plan.Permissions = permissionsVal
+	plan.Events = eventsVal
+	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().String())
+	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().String())
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, &plan)
