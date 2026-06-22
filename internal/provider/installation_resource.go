@@ -234,6 +234,7 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	// Map response body to schema and populate Computed attribute values
 	var permissionsMap map[string]string
 	if installation.Permissions != nil {
+		// Dynamically convert the InstallationPermissions struct to map[string]string through a JSON marshal/unmarshal round-trip
 		pb, err := json.Marshal(installation.Permissions)
 		if err != nil {
 			resp.Diagnostics.AddError(
