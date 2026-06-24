@@ -22,5 +22,6 @@ func testAccPreCheck(t *testing.T) {
 }
 
 func TestProvider(t *testing.T) {
+	_ = testAccProtoV6ProviderFactories
 	testAccPreCheck(t)
 }
