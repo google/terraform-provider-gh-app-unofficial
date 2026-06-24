@@ -78,8 +78,8 @@ read -r
 
 export TF_REATTACH_PROVIDERS="$TF_REATTACH"
 
-# Run terraform in the target example directory (defaults to examples/provider-install-verification)
-TARGET_DIR="${TF_EXAMPLE_DIR:-examples/provider-install-verification}"
+# Run terraform in the target example directory (defaults to examples/resources/ghapp_installation)
+TARGET_DIR="${TF_EXAMPLE_DIR:-examples/resources/ghapp_installation}"
 echo "Changing directory to $TARGET_DIR"
 cd "$TARGET_DIR"
 
