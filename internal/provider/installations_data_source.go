@@ -192,9 +192,22 @@ func flattenInstallations(ctx context.Context, client *github.Client, enterprise
 	for _, installation := range installations {
 		var permissionsMap map[string]string
 		if installation.Permissions != nil {
+			// Dynamically convert the InstallationPermissions struct to map[string]string through a JSON marshal/unmarshal round-trip
 			pb, err := json.Marshal(installation.Permissions)
-			if err == nil {
-				_ = json.Unmarshal(pb, &permissionsMap)
+			if err != nil {
+				diags.AddError(
+					"Error Marshalling Permissions",
+					fmt.Sprintf("Could not marshal installation permissions for installation ID %d: %s", installation.GetID(), err.Error()),
+				)
+				return nil
+			}
+			err = json.Unmarshal(pb, &permissionsMap)
+			if err != nil {
+				diags.AddError(
+					"Error Unmarshalling Permissions",
+					fmt.Sprintf("Could not unmarshal installation permissions for installation ID %d: %s", installation.GetID(), err.Error()),
+				)
+				return nil
 			}
 		}
 

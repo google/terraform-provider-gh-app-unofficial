@@ -3,7 +3,7 @@
 .DS_Store
 example.tf
 terraform.tfplan
-terraform.tfstate
+terraform.tfstate*
 bin/
 dist/
 modules-dev/
@@ -36,3 +36,12 @@ website/vendor
 
 # Local compiled binaries
 terraform-provider-gh-app-unofficial
+debug_bin
+
+# Local development overrides & secrets
+terraform.rc
+.env
+*.pem
+get-token
+*.tfvars
+*.tfvars.json

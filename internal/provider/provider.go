@@ -144,7 +144,9 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 
 func (p *GHAppProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewExampleResource,
+		func() resource.Resource {
+			return &installationResource{}
+		},
 	}
 }
 
