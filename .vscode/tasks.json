@@ -16,12 +16,9 @@
         {
             "label": "Terraform Plan (Verification Example)",
             "type": "shell",
-            "command": "terraform plan",
+            "command": "if [ -f .env ]; then export $(grep -v '^#' .env | xargs); fi; export GITHUB_TOKEN=$(go run ./cmd/get-token); terraform -chdir=${TF_EXAMPLE_DIR:-examples/installation-resource} plan",
             "options": {
-                "cwd": "${workspaceFolder}/examples/provider-install-verification",
-                "env": {
-                    "GITHUB_TOKEN": "${env:GITHUB_TOKEN}"
-                }
+                "cwd": "${workspaceFolder}"
             },
             "dependsOn": "Build Provider",
             "problemMatcher": []
@@ -29,12 +26,9 @@
         {
             "label": "Terraform Apply (Verification Example)",
             "type": "shell",
-            "command": "terraform apply",
+            "command": "if [ -f .env ]; then export $(grep -v '^#' .env | xargs); fi; export GITHUB_TOKEN=$(go run ./cmd/get-token); terraform -chdir=${TF_EXAMPLE_DIR:-examples/installation-resource} apply",
             "options": {
-                "cwd": "${workspaceFolder}/examples/provider-install-verification",
-                "env": {
-                    "GITHUB_TOKEN": "${env:GITHUB_TOKEN}"
-                }
+                "cwd": "${workspaceFolder}"
             },
             "dependsOn": "Build Provider",
             "problemMatcher": []
