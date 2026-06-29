@@ -39,9 +39,10 @@ terraform-provider-gh-app-unofficial
 debug_bin
 
 # Local development overrides & secrets
+.terraformrc
 terraform.rc
 .env
 *.pem
-get-token
 *.tfvars
 *.tfvars.json
+

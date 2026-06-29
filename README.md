@@ -62,3 +62,55 @@ In order to run the full suite of Acceptance tests, run `make testacc`.
 ```shell
 make testacc
 ```
+
+## Local Development & Debugging
+
+### Prerequisites
+*   Install the [Go extension for VS Code](https://marketplace.visualstudio.com/items?itemName=golang.Go).
+*   Install the Delve debugger: `go install github.com/go-delve/delve/cmd/dlv@latest`
+*   Create a `.env` file in the workspace root with your GitHub App credentials and test configurations:
+    ```env
+    GITHUB_APP_ID="YOUR_GITHUB_APP_ID"
+    GITHUB_APP_PRIVATE_KEY_PATH="~/path/to/your/private-key.pem"
+    GITHUB_APP_INSTALLATION_ID="YOUR_GITHUB_APP_INSTALLATION_ID"
+
+    # (Optional) Target example folder to run/debug. Defaults to examples/provider-install-verification
+    TF_EXAMPLE_DIR="examples/installations-data-source"
+    ```
+    *(Note: You can either create your own GitHub App for testing or obtain credentials/keys for a shared test App from the repository owner).*
+*   Create a `terraform.rc` file (or modify an existing one at `~/.terraformrc`) in the workspace root to point to your local Go bin directory (e.g. `~/go/bin`):
+    ```hcl
+    provider_installation {
+      dev_overrides {
+        "google/gh-app-unofficial" = "/path/to/your/home/go/bin"
+      }
+      direct {}
+    }
+    ```
+
+### Running & Testing (Dev Overrides)
+To test local changes with Terraform without breakpoints:
+1.  Use `Ctrl+Shift+P` -> **Run Task** -> select **`Terraform Plan (Verification Example)`** or **`Terraform Apply (Verification Example)`**.
+2.  This automatically builds the provider and runs Terraform using the local dev configuration.
+
+### Debugging the Provider
+To debug the provider with breakpoints (integrated VS Code workflow):
+1.  In VS Code, go to the **Run and Debug** view (`Ctrl+Shift+D`).
+2.  Select **`Debug Provider`** and press `F5`.
+3.  Select the Terraform command you want to run (`plan`, `apply`, or `destroy`) from the dropdown prompt at the top of the window.
+4.  VS Code will start the debugger in a background terminal task and automatically attach to it.
+5.  Switch to the **Terminal** tab in VS Code (where the `Start Headless Debugger` task is running), and press **`ENTER`** to run Terraform. Your breakpoints in VS Code will now be hit.
+
+### Debugging Tests
+To debug unit or acceptance tests:
+1.  Select **Debug Tests (Current File)** or **Debug Provider Acceptance Tests** in the Run and Debug view.
+2.  Press `F5` (automatically sets `TF_ACC=1`).
+
+### Troubleshooting: "operation not permitted" (Linux)
+If the debugger fails to launch with `operation not permitted`, run:
+```shell
+sudo sysctl -w kernel.yama.ptrace_scope=0
+```
+*(Resets on reboot. To make permanent, add `kernel.yama.ptrace_scope = 0` to `/etc/sysctl.d/10-ptrace.conf`)*
+
+

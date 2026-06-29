@@ -1,0 +1,70 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Provider",
+            "type": "shell",
+            "command": "go install",
+            "problemMatcher": [
+                "$go"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Terraform Plan (Verification Example)",
+            "type": "shell",
+            "command": "if [ -f .env ]; then export $(grep -v '^#' .env | xargs); fi; export GITHUB_TOKEN=$(go run ./cmd/get-token); terraform -chdir=${TF_EXAMPLE_DIR:-examples/installation-resource} plan",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": "Build Provider",
+            "problemMatcher": []
+        },
+        {
+            "label": "Terraform Apply (Verification Example)",
+            "type": "shell",
+            "command": "if [ -f .env ]; then export $(grep -v '^#' .env | xargs); fi; export GITHUB_TOKEN=$(go run ./cmd/get-token); terraform -chdir=${TF_EXAMPLE_DIR:-examples/installation-resource} apply",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": "Build Provider",
+            "problemMatcher": []
+        },
+        {
+            "label": "Start Headless Debugger",
+            "type": "shell",
+            "command": "${workspaceFolder}/debug-terraform.sh",
+            "args": [
+                "${input:terraformCmd}"
+            ],
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "custom",
+                "pattern": {
+                    "regexp": "^$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^Starting Delve",
+                    "endsPattern": "^Debugger is listening on port 2345"
+                }
+            }
+        }
+    ],
+    "inputs": [
+        {
+            "id": "terraformCmd",
+            "description": "Terraform command to run",
+            "default": "plan",
+            "type": "pickString",
+            "options": [
+                "plan",
+                "apply",
+                "destroy"
+            ]
+        }
+    ]
+}
