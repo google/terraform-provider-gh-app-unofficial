@@ -20,7 +20,6 @@
             "options": {
                 "cwd": "${workspaceFolder}/examples/provider-install-verification",
                 "env": {
-                    "TF_CLI_CONFIG_FILE": "${workspaceFolder}/terraform.rc",
                     "GITHUB_TOKEN": "${env:GITHUB_TOKEN}"
                 }
             },
@@ -34,7 +33,6 @@
             "options": {
                 "cwd": "${workspaceFolder}/examples/provider-install-verification",
                 "env": {
-                    "TF_CLI_CONFIG_FILE": "${workspaceFolder}/terraform.rc",
                     "GITHUB_TOKEN": "${env:GITHUB_TOKEN}"
                 }
             },
