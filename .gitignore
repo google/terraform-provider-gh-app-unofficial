@@ -42,7 +42,6 @@ debug_bin
 terraform.rc
 .env
 *.pem
-get-token
 *.tfvars
 *.tfvars.json
 
