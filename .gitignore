@@ -47,4 +47,5 @@ terraform.rc
 *.tfvars.json
 .terraform.tfstate.lock.info
 
-
+# Cloned reference repositories for style guide analysis
+.reference_repos/
