@@ -75,10 +75,7 @@ func getSelectedRepositories(ctx context.Context, client *github.Client, enterpr
 
 // isKnown returns true if the attribute value is non-nil, not null, and not unknown.
 func isKnown(val attr.Value) bool {
-	if val == nil {
-		return false
-	}
-	return !val.IsNull() && !val.IsUnknown()
+	return val != nil && !val.IsNull() && !val.IsUnknown()
 }
 
 // listToStringSlice converts a Terraform types.List of strings into a Go []string slice.
