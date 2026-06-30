@@ -172,12 +172,12 @@ func flattenInstallations(ctx context.Context, client *github.Client, enterprise
 	result := make([]app, 0, len(installations))
 
 	for _, installation := range installations {
-		permissionsVal := flattenPermissions(ctx, installation.Permissions, diags)
+		permissionsVal := flattenPermissions(ctx, installation.GetPermissions(), diags)
 		if diags.HasError() {
 			return nil
 		}
 
-		eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.Events)
+		eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.GetEvents())
 		diags.Append(errDiags...)
 		if diags.HasError() {
 			return nil

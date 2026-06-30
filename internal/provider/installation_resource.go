@@ -217,9 +217,9 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	permissionsVal := flattenPermissions(ctx, installation.Permissions, &resp.Diagnostics)
+	permissionsVal := flattenPermissions(ctx, installation.GetPermissions(), &resp.Diagnostics)
 
-	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.Events)
+	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.GetEvents())
 	resp.Diagnostics.Append(errDiags...)
 
 	if resp.Diagnostics.HasError() {
@@ -285,9 +285,9 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	}
 
 	// Map response body to state
-	permissionsVal := flattenPermissions(ctx, foundInstallation.Permissions, &resp.Diagnostics)
+	permissionsVal := flattenPermissions(ctx, foundInstallation.GetPermissions(), &resp.Diagnostics)
 
-	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, foundInstallation.Events)
+	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, foundInstallation.GetEvents())
 	resp.Diagnostics.Append(errDiags...)
 
 	if resp.Diagnostics.HasError() {
@@ -362,9 +362,9 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	permissionsVal := flattenPermissions(ctx, installation.Permissions, &resp.Diagnostics)
+	permissionsVal := flattenPermissions(ctx, installation.GetPermissions(), &resp.Diagnostics)
 
-	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.Events)
+	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.GetEvents())
 	resp.Diagnostics.Append(errDiags...)
 
 	if resp.Diagnostics.HasError() {
