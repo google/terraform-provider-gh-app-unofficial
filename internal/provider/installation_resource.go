@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/google/go-github/v88/github"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -230,8 +231,8 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	plan.RepositorySelection = types.StringValue(installation.GetRepositorySelection())
 	plan.Permissions = permissionsVal
 	plan.Events = eventsVal
-	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().String())
-	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().String())
+	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().Format(time.RFC3339))
+	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().Format(time.RFC3339))
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, &plan)
@@ -297,8 +298,8 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	state.RepositorySelection = types.StringValue(foundInstallation.GetRepositorySelection())
 	state.Permissions = permissionsVal
 	state.Events = eventsVal
-	state.CreatedAt = types.StringValue(foundInstallation.GetCreatedAt().String())
-	state.UpdatedAt = types.StringValue(foundInstallation.GetUpdatedAt().String())
+	state.CreatedAt = types.StringValue(foundInstallation.GetCreatedAt().Format(time.RFC3339))
+	state.UpdatedAt = types.StringValue(foundInstallation.GetUpdatedAt().Format(time.RFC3339))
 
 	// Update selected repositories if selection is "selected"
 	selectedReposVal := getSelectedRepositories(ctx, client, enterpriseSlug, state.TargetOrg.ValueString(), foundInstallation.GetID(), foundInstallation.GetRepositorySelection(), &resp.Diagnostics)
@@ -355,6 +356,11 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
+	if installation == nil {
+		resp.Diagnostics.AddError("Failed to update app installation repositories", "Installation not found")
+		return
+	}
+
 	// Map response body to schema and populate Computed attribute values
 	permissionsVal := flattenPermissions(ctx, installation.Permissions, &resp.Diagnostics)
 
@@ -369,8 +375,8 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 	plan.RepositorySelection = types.StringValue(installation.GetRepositorySelection())
 	plan.Permissions = permissionsVal
 	plan.Events = eventsVal
-	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().String())
-	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().String())
+	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().Format(time.RFC3339))
+	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().Format(time.RFC3339))
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, &plan)

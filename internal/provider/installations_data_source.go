@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/google/go-github/v88/github"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -195,8 +196,8 @@ func flattenInstallations(ctx context.Context, client *github.Client, enterprise
 			RepositorySelection:  types.StringValue(installation.GetRepositorySelection()),
 			Events:               eventsVal,
 			Permissions:          permissionsVal,
-			CreatedAt:            types.StringValue(installation.GetCreatedAt().String()),
-			UpdatedAt:            types.StringValue(installation.GetUpdatedAt().String()),
+			CreatedAt:            types.StringValue(installation.GetCreatedAt().Format(time.RFC3339)),
+			UpdatedAt:            types.StringValue(installation.GetUpdatedAt().Format(time.RFC3339)),
 		})
 	}
 
