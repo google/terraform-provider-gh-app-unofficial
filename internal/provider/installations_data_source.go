@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -108,26 +107,8 @@ func (d *installationsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 
 // Configure adds the provider-configured GitHub client to the data source.
 func (d *installationsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured. req.ProviderData
-	// can be nil during early lifecycle phases (such as terraform validate or
-	// initial schema discovery). Returning early without adding a diagnostic
-	// error allows the framework to proceed safely.
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(*GHClient)
-
-	if !ok {
-		tflog.Error(ctx, "Unexpected Data Source Configure Type", map[string]interface{}{
-			"expected": "*GHClient",
-			"got":      fmt.Sprintf("%T", req.ProviderData),
-		})
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *GHClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
+	client := getGHClient(ctx, req.ProviderData, &resp.Diagnostics)
+	if client == nil {
 		return
 	}
 
@@ -190,29 +171,7 @@ func flattenInstallations(ctx context.Context, client *github.Client, enterprise
 	result := make([]app, 0, len(installations))
 
 	for _, installation := range installations {
-		var permissionsMap map[string]string
-		if installation.Permissions != nil {
-			// Dynamically convert the InstallationPermissions struct to map[string]string through a JSON marshal/unmarshal round-trip
-			pb, err := json.Marshal(installation.Permissions)
-			if err != nil {
-				diags.AddError(
-					"Error Marshalling Permissions",
-					fmt.Sprintf("Could not marshal installation permissions for installation ID %d: %s", installation.GetID(), err.Error()),
-				)
-				return nil
-			}
-			err = json.Unmarshal(pb, &permissionsMap)
-			if err != nil {
-				diags.AddError(
-					"Error Unmarshalling Permissions",
-					fmt.Sprintf("Could not unmarshal installation permissions for installation ID %d: %s", installation.GetID(), err.Error()),
-				)
-				return nil
-			}
-		}
-
-		permissionsVal, errDiags := types.MapValueFrom(ctx, types.StringType, permissionsMap)
-		diags.Append(errDiags...)
+		permissionsVal := flattenPermissions(ctx, installation.Permissions, diags)
 		if diags.HasError() {
 			return nil
 		}
@@ -223,34 +182,9 @@ func flattenInstallations(ctx context.Context, client *github.Client, enterprise
 			return nil
 		}
 
-		var selectedReposVal types.List
-		if installation.GetRepositorySelection() == "selected" {
-			repos, _, err := client.Enterprise.ListRepositoriesForOrgAppInstallation(ctx, enterpriseSlug, targetOrg, installation.GetID(), nil)
-			if err != nil {
-				tflog.Error(ctx, "Failed to list repositories for installation", map[string]interface{}{
-					"error":           err.Error(),
-					"installation_id": installation.GetID(),
-					"enterprise_slug": enterpriseSlug,
-					"target_org":      targetOrg,
-				})
-				diags.AddError(
-					"Error Reading GitHub App Installation Repositories",
-					fmt.Sprintf("Could not list repositories for installation ID %d: %s", installation.GetID(), err.Error()),
-				)
-				return nil
-			}
-			var repoNames []string
-			for _, repo := range repos {
-				repoNames = append(repoNames, repo.GetName())
-			}
-			var errDiags diag.Diagnostics
-			selectedReposVal, errDiags = types.ListValueFrom(ctx, types.StringType, repoNames)
-			diags.Append(errDiags...)
-			if diags.HasError() {
-				return nil
-			}
-		} else {
-			selectedReposVal = types.ListNull(types.StringType)
+		selectedReposVal := getSelectedRepositories(ctx, client, enterpriseSlug, targetOrg, installation.GetID(), installation.GetRepositorySelection(), diags)
+		if diags.HasError() {
+			return nil
 		}
 
 		result = append(result, app{
