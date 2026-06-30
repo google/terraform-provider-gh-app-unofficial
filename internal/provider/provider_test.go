@@ -49,5 +49,6 @@ provider "ghapp" {
 
 func TestProvider(t *testing.T) {
 	_ = testAccProtoV6ProviderFactories
+	_ = providerConfig
 	// Minimal check to ensure the provider can be instantiated.
 }

@@ -116,7 +116,7 @@ func TestFlattenInstallations(t *testing.T) {
 				if diags.HasError() {
 					t.Fatalf("failed to parse events: %v", diags.Errors())
 				}
-				if len(events) != 2 || events[0] != "push" || events[1] != "pull_request"{
+				if len(events) != 2 || events[0] != "push" || events[1] != "pull_request" {
 					t.Errorf("unexpected events: %v", events)
 				}
 			},
