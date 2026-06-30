@@ -81,8 +81,8 @@ func isKnown(val attr.Value) bool {
 	return !val.IsNull() && !val.IsUnknown()
 }
 
-// expandStringList converts a Terraform types.List of strings into a Go []string slice.
-func expandStringList(ctx context.Context, list types.List, diags *diag.Diagnostics) []string {
+// listToStringSlice converts a Terraform types.List of strings into a Go []string slice.
+func listToStringSlice(ctx context.Context, list types.List, diags *diag.Diagnostics) []string {
 	var elements []string
 	if isKnown(list) {
 		errDiags := list.ElementsAs(ctx, &elements, false)

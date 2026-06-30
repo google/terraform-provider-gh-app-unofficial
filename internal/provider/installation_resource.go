@@ -194,7 +194,7 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	enterpriseSlug := r.client.EnterpriseSlug
 	targetOrg := plan.TargetOrg.ValueString()
 
-	selectedRepos := expandStringList(ctx, plan.SelectedRepositories, &resp.Diagnostics)
+	selectedRepos := listToStringSlice(ctx, plan.SelectedRepositories, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -335,7 +335,7 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 	enterpriseSlug := r.client.EnterpriseSlug
 	targetOrg := plan.TargetOrg.ValueString()
 
-	selectedRepos := expandStringList(ctx, plan.SelectedRepositories, &resp.Diagnostics)
+	selectedRepos := listToStringSlice(ctx, plan.SelectedRepositories, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
