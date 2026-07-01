@@ -1,18 +1,8 @@
-# Terraform Provider Scaffolding (Terraform Plugin Framework)
+# Terraform Provider for GitHub Apps (Unofficial)
 
-_This template repository is built on the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework). The template repository built on the [Terraform Plugin SDK](https://github.com/hashicorp/terraform-plugin-sdk) can be found at [terraform-provider-scaffolding](https://github.com/hashicorp/terraform-provider-scaffolding). See [Which SDK Should I Use?](https://developer.hashicorp.com/terraform/plugin/framework-benefits) in the Terraform documentation for additional information._
+A Terraform provider designed to manage GitHub App installations and list installation configurations. This provider is built using the modern [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework).
 
-This repository is a *template* for a [Terraform](https://www.terraform.io) provider. It is intended as a starting point for creating Terraform providers, containing:
-
-- A resource and a data source (`internal/provider/`),
-- Examples (`examples/`) and generated documentation (`docs/`),
-- Miscellaneous meta files.
-
-These files contain boilerplate code that you will need to edit to create your own Terraform provider. Tutorials for creating Terraform providers can be found on the [HashiCorp Developer](https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework) platform. _Terraform Plugin Framework specific guides are titled accordingly._
-
-Please see the [GitHub template repository documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/creating-a-repository-from-a-template) for how to create a new repository from this template on GitHub.
-
-Once you've written your provider, you'll want to [publish it on the Terraform Registry](https://developer.hashicorp.com/terraform/registry/providers/publishing) so that others can use it.
+Using this provider, you can automate the installation and organization-level configuration of GitHub Apps, making it easier to manage app integrations dynamically across your enterprises and organizations.
 
 ## Requirements
 
@@ -45,7 +35,24 @@ Then commit the changes to `go.mod` and `go.sum`.
 
 ## Using the Provider
 
-Fill this in for each provider
+To configure the provider in your Terraform configurations, add the following block:
+
+```hcl
+terraform {
+  required_providers {
+    ghapp = {
+      source  = "google/gh-app-unofficial" # (Or your custom registry source once published)
+      version = "~> 1.0"
+    }
+  }
+}
+
+provider "ghapp" {
+  enterprise_slug = "my-enterprise-slug"
+  # token can also be set via the GITHUB_TOKEN environment variable
+  # token           = "your-installation-access-token"
+}
+```
 
 ## Developing the Provider
 
