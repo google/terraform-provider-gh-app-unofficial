@@ -152,6 +152,7 @@ func (r *installationResource) ValidateConfig(ctx context.Context, req resource.
 		repoSelection = config.RepositorySelection.ValueString()
 	}
 
+	// Cross-validation between selected_repositories and repository_selection
 	switch repoSelection {
 	case "selected":
 		if config.SelectedRepositories.IsNull() {
@@ -194,6 +195,7 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	enterpriseSlug := r.client.EnterpriseSlug
 	targetOrg := plan.TargetOrg.ValueString()
 
+	// Slice of strings of repositories to install app in
 	selectedRepos := listToStringSlice(ctx, plan.SelectedRepositories, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
