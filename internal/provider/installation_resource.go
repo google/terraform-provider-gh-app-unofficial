@@ -2,12 +2,12 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/google/go-github/v88/github"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -119,19 +119,8 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 }
 
 func (r *installationResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(*GHClient)
-
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *GHClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
+	client := getGHClient(ctx, req.ProviderData, &resp.Diagnostics)
+	if client == nil {
 		return
 	}
 
@@ -163,6 +152,7 @@ func (r *installationResource) ValidateConfig(ctx context.Context, req resource.
 		repoSelection = config.RepositorySelection.ValueString()
 	}
 
+	// Cross-validation between selected_repositories and repository_selection
 	switch repoSelection {
 	case "selected":
 		if config.SelectedRepositories.IsNull() {
@@ -180,7 +170,7 @@ func (r *installationResource) ValidateConfig(ctx context.Context, req resource.
 		}
 
 	case "all":
-		if !config.SelectedRepositories.IsNull() && !config.SelectedRepositories.IsUnknown() && len(config.SelectedRepositories.Elements()) > 0 {
+		if isKnown(config.SelectedRepositories) && len(config.SelectedRepositories.Elements()) > 0 {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("selected_repositories"),
 				"Invalid Selected Repositories",
@@ -205,17 +195,14 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	enterpriseSlug := r.client.EnterpriseSlug
 	targetOrg := plan.TargetOrg.ValueString()
 
-	var selectedRepos []string
-	if !plan.SelectedRepositories.IsNull() && !plan.SelectedRepositories.IsUnknown() {
-		diags := plan.SelectedRepositories.ElementsAs(ctx, &selectedRepos, false)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
+	// Slice of strings of repositories to install app in
+	selectedRepos := listToStringSlice(ctx, plan.SelectedRepositories, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	repoSelection := "all"
-	if !plan.RepositorySelection.IsNull() && !plan.RepositorySelection.IsUnknown() {
+	if isKnown(plan.RepositorySelection) {
 		repoSelection = plan.RepositorySelection.ValueString()
 	}
 
@@ -232,30 +219,9 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	var permissionsMap map[string]string
-	if installation.Permissions != nil {
-		// Dynamically convert the InstallationPermissions struct to map[string]string through a JSON marshal/unmarshal round-trip
-		pb, err := json.Marshal(installation.Permissions)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Error Marshalling Permissions",
-				fmt.Sprintf("Could not marshal installation permissions: %s", err.Error()),
-			)
-			return
-		}
-		err = json.Unmarshal(pb, &permissionsMap)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Error Unmarshalling Permissions",
-				fmt.Sprintf("Could not unmarshal installation permissions: %s", err.Error()),
-			)
-			return
-		}
-	}
-	permissionsVal, errDiags := types.MapValueFrom(ctx, types.StringType, permissionsMap)
-	resp.Diagnostics.Append(errDiags...)
+	permissionsVal := flattenPermissions(ctx, installation.GetPermissions(), &resp.Diagnostics)
 
-	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.Events)
+	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.GetEvents())
 	resp.Diagnostics.Append(errDiags...)
 
 	if resp.Diagnostics.HasError() {
@@ -267,8 +233,8 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	plan.RepositorySelection = types.StringValue(installation.GetRepositorySelection())
 	plan.Permissions = permissionsVal
 	plan.Events = eventsVal
-	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().String())
-	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().String())
+	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().Format(time.RFC3339))
+	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().Format(time.RFC3339))
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, &plan)
@@ -321,64 +287,24 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	}
 
 	// Map response body to state
-	var permissionsMap map[string]string
-	if foundInstallation.Permissions != nil {
-		pb, err := json.Marshal(foundInstallation.Permissions)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Error Marshalling Permissions",
-				fmt.Sprintf("Could not marshal installation permissions: %s", err.Error()),
-			)
-			return
-		}
-		err = json.Unmarshal(pb, &permissionsMap)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Error Unmarshalling Permissions",
-				fmt.Sprintf("Could not unmarshal installation permissions: %s", err.Error()),
-			)
-			return
-		}
-	}
-	permissionsVal, errDiags := types.MapValueFrom(ctx, types.StringType, permissionsMap)
-	resp.Diagnostics.Append(errDiags...)
+	permissionsVal := flattenPermissions(ctx, foundInstallation.GetPermissions(), &resp.Diagnostics)
 
-	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, foundInstallation.Events)
+	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, foundInstallation.GetEvents())
 	resp.Diagnostics.Append(errDiags...)
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// These values are returned by the "Snapshot" Enterprise call
 	state.AppSlug = types.StringValue(foundInstallation.GetAppSlug())
 	state.RepositorySelection = types.StringValue(foundInstallation.GetRepositorySelection())
 	state.Permissions = permissionsVal
 	state.Events = eventsVal
-	state.CreatedAt = types.StringValue(foundInstallation.GetCreatedAt().String())
-	state.UpdatedAt = types.StringValue(foundInstallation.GetUpdatedAt().String())
+	state.CreatedAt = types.StringValue(foundInstallation.GetCreatedAt().Format(time.RFC3339))
+	state.UpdatedAt = types.StringValue(foundInstallation.GetUpdatedAt().Format(time.RFC3339))
 
 	// Update selected repositories if selection is "selected"
-	var selectedReposVal types.List
-	if foundInstallation.GetRepositorySelection() == "selected" {
-		repos, _, err := client.Enterprise.ListRepositoriesForOrgAppInstallation(ctx, enterpriseSlug, state.TargetOrg.ValueString(), foundInstallation.GetID(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Error Reading GitHub App Installation Repositories",
-				fmt.Sprintf("Could not list repositories: %s", err.Error()),
-			)
-			return
-		}
-		var repoNames []string
-		for _, repo := range repos {
-			repoNames = append(repoNames, repo.GetName())
-		}
-		var errDiags diag.Diagnostics
-		selectedReposVal, errDiags = types.ListValueFrom(ctx, types.StringType, repoNames)
-		resp.Diagnostics.Append(errDiags...)
-	} else {
-		selectedReposVal = types.ListNull(types.StringType)
-	}
+	selectedReposVal := getSelectedRepositories(ctx, client, enterpriseSlug, state.TargetOrg.ValueString(), foundInstallation.GetID(), foundInstallation.GetRepositorySelection(), &resp.Diagnostics)
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -392,6 +318,79 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *installationResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	// Retrieve values from plan
+	var plan installationResourceModel
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	instIDStr := plan.ID.ValueString()
+	instID, err := strconv.ParseInt(instIDStr, 10, 64)
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid installation ID", err.Error())
+		return
+	}
+
+	client := r.client.Client
+	enterpriseSlug := r.client.EnterpriseSlug
+	targetOrg := plan.TargetOrg.ValueString()
+
+	selectedRepos := listToStringSlice(ctx, plan.SelectedRepositories, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	repoSelection := "all"
+	if isKnown(plan.RepositorySelection) {
+		repoSelection = plan.RepositorySelection.ValueString()
+	}
+
+	opts := github.UpdateAppInstallationRepositoriesRequest{
+		RepositorySelection: &repoSelection,
+		Repositories:        selectedRepos,
+	}
+
+	installation, _, err := client.Enterprise.UpdateAppInstallationRepositories(ctx, enterpriseSlug, targetOrg, instID, opts)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to update app installation repositories", err.Error())
+		return
+	}
+
+	if installation == nil {
+		resp.Diagnostics.AddError("Failed to update app installation repositories", "Installation not found")
+		return
+	}
+
+	// Map response body to schema and populate Computed attribute values
+	permissionsVal := flattenPermissions(ctx, installation.GetPermissions(), &resp.Diagnostics)
+
+	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, installation.GetEvents())
+	resp.Diagnostics.Append(errDiags...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	plan.AppSlug = types.StringValue(installation.GetAppSlug())
+	plan.RepositorySelection = types.StringValue(installation.GetRepositorySelection())
+	plan.Permissions = permissionsVal
+	plan.Events = eventsVal
+	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().Format(time.RFC3339))
+	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().Format(time.RFC3339))
+
+	// Set state to fully populated data
+	diags = resp.State.Set(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	tflog.Info(ctx, "Installation updated successfully", map[string]interface{}{
+		"id": plan.ID.ValueString(),
+	})
 }
 
 // Delete deletes the resource and removes the Terraform state on success.
