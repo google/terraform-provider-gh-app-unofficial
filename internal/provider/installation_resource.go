@@ -395,4 +395,26 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 
 // Delete deletes the resource and removes the Terraform state on success.
 func (r *installationResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state installationResourceModel
+	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	client := r.client.Client
+	enterpriseSlug := r.client.EnterpriseSlug
+	targetOrg := state.TargetOrg.ValueString()
+	instIDStr := state.ID.ValueString()
+	instID, err := strconv.ParseInt(instIDStr, 10, 64)
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid installation ID", err.Error())
+		return
+	}
+
+	_, err = client.Enterprise.UninstallApp(ctx, enterpriseSlug, targetOrg, instID)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to uninstall app", err.Error())
+		return
+	}
 }
