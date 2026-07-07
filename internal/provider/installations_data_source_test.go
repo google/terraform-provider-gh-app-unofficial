@@ -3,37 +3,28 @@ package provider
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
-	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-github/v88/github"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// roundTripperFunc is a helper to mock HTTP responses in tests.
-type roundTripperFunc func(req *http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
-}
-
 func TestFlattenInstallations(t *testing.T) {
-	// This is an offline unit test verifying that flattenInstallations
-	// correctly maps go-github structs to Terraform state.
-	// All inputs are synthetic mock values
+	t.Parallel()
 	ctx := context.Background()
 
-	// Mock HTTP client that returns a list of repositories when requested.
 	mockHTTPClient := &http.Client{
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-			// Mock response for listing repositories for a selected installation.
-			// This simulates the secondary HTTP request made by flattenInstallations
-			// when an installation's repository selection is set to "selected".
 			respBody := `[
 				{"id": 1, "name": "repo-alpha"},
 				{"id": 2, "name": "repo-beta"}
@@ -45,24 +36,34 @@ func TestFlattenInstallations(t *testing.T) {
 			}, nil
 		}),
 	}
-	mockGHClient, err := github.NewClient(github.WithHTTPClient(mockHTTPClient))
-	if err != nil {
-		t.Fatalf("failed to create github client: %v", err)
+	mockGHClient, _ := github.NewClient(github.WithHTTPClient(mockHTTPClient))
+
+	permsMust := func(m map[string]attr.Value) types.Map {
+		return types.MapValueMust(types.StringType, m)
+	}
+	eventsMust := func(s []string) types.List {
+		var vals []attr.Value
+		for _, v := range s {
+			vals = append(vals, types.StringValue(v))
+		}
+		return types.ListValueMust(types.StringType, vals)
 	}
 
-	cases := map[string]struct {
-		input          []*github.Installation
-		expectedLength int
-		verify         func(t *testing.T, result []app)
+	cases := []struct {
+		name    string
+		input   []*github.Installation
+		rt      roundTripperFunc
+		want    []app
+		wantErr string
 	}{
-		"Empty List": {
-			input:          []*github.Installation{},
-			expectedLength: 0,
-			verify:         func(t *testing.T, result []app) {},
+		{
+			name:    "empty_list",
+			input:   []*github.Installation{},
+			want:    []app{},
+			wantErr: "",
 		},
-		"All Repositories Selection": {
-			// Validates mapping when the app is installed for ALL repositories in the org.
-			// In this case, no additional API call is made to list repositories.
+		{
+			name: "all_repositories_selection",
 			input: []*github.Installation{
 				{
 					ID:                  github.Ptr(int64(11111)),
@@ -77,53 +78,23 @@ func TestFlattenInstallations(t *testing.T) {
 					UpdatedAt: &github.Timestamp{Time: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)},
 				},
 			},
-			expectedLength: 1,
-			verify: func(t *testing.T, result []app) {
-				res := result[0]
-				if res.ID.ValueString() != "11111" {
-					t.Errorf("expected ID 11111, got %s", res.ID.ValueString())
-				}
-				if res.ClientID.ValueString() != "mock-client-id-abc" {
-					t.Errorf("expected ClientID mock-client-id-abc, got %s", res.ClientID.ValueString())
-				}
-				if res.AppSlug.ValueString() != "test-app" {
-					t.Errorf("expected AppSlug test-app, got %s", res.AppSlug.ValueString())
-				}
-				if res.RepositorySelection.ValueString() != "all" {
-					t.Errorf("expected RepositorySelection all, got %s", res.RepositorySelection.ValueString())
-				}
-				// Verify that since it's 'all' repositories, selected_repositories is null
-				if !res.SelectedRepositories.IsNull() {
-					t.Errorf("expected SelectedRepositories to be Null, got %v", res.SelectedRepositories)
-				}
-
-				// Verify permissions map
-				var perms map[string]string
-				diags := res.Permissions.ElementsAs(ctx, &perms, false) // To convert types.Map to map[string]string
-				if diags.HasError() {
-					t.Fatalf("failed to parse permissions: %v", diags.Errors())
-				}
-				if perms["actions"] != "write" {
-					t.Errorf("expected actions permission 'write', got %s", perms["actions"])
-				}
-				if len(perms) != 1 {
-					t.Errorf("expected 1 permission, got %d", len(perms))
-				}
-
-				// Verify events list
-				var events []string
-				diags = res.Events.ElementsAs(ctx, &events, false) // Converts from types.List to []string
-				if diags.HasError() {
-					t.Fatalf("failed to parse events: %v", diags.Errors())
-				}
-				if len(events) != 2 || events[0] != "push" || events[1] != "pull_request" {
-					t.Errorf("unexpected events: %v", events)
-				}
+			want: []app{
+				{
+					ID:                   types.StringValue("11111"),
+					ClientID:             types.StringValue("mock-client-id-abc"),
+					AppSlug:              types.StringValue("test-app"),
+					SelectedRepositories: types.ListNull(types.StringType),
+					RepositorySelection:  types.StringValue("all"),
+					Permissions:          permsMust(map[string]attr.Value{"actions": types.StringValue("write")}),
+					Events:               eventsMust([]string{"push", "pull_request"}),
+					CreatedAt:            types.StringValue("2026-01-01T00:00:00Z"),
+					UpdatedAt:            types.StringValue("2026-01-02T00:00:00Z"),
+				},
 			},
+			wantErr: "",
 		},
-		"Selected Repositories Selection (Calls API)": {
-			// Validates mapping when the app is installed for SELECTED repositories only.
-			// This triggers the internal API call to retrieve the repository names list.
+		{
+			name: "selected_repositories_selection",
 			input: []*github.Installation{
 				{
 					ID:                  github.Ptr(int64(22222)),
@@ -134,121 +105,201 @@ func TestFlattenInstallations(t *testing.T) {
 					UpdatedAt:           &github.Timestamp{Time: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)},
 				},
 			},
-			expectedLength: 1,
-			verify: func(t *testing.T, result []app) {
-				res := result[0]
-				if res.ID.ValueString() != "22222" {
-					t.Errorf("expected ID 22222, got %s", res.ID.ValueString())
-				}
-				if res.RepositorySelection.ValueString() != "selected" {
-					t.Errorf("expected RepositorySelection selected, got %s", res.RepositorySelection.ValueString())
-				}
-				// Verify that repositories were dynamically listed and flattened
-				var repos []string
-				diags := res.SelectedRepositories.ElementsAs(ctx, &repos, false)
-				if diags.HasError() {
-					t.Fatalf("failed to parse selected repositories: %v", diags.Errors())
-				}
-				if len(repos) != 2 || repos[0] != "repo-alpha" || repos[1] != "repo-beta" {
-					t.Errorf("expected [repo-alpha, repo-beta], got %v", repos)
-				}
+			want: []app{
+				{
+					ID:                   types.StringValue("22222"),
+					ClientID:             types.StringValue("mock-client-id-xyz"),
+					AppSlug:              types.StringValue("selected-app"),
+					SelectedRepositories: eventsMust([]string{"repo-alpha", "repo-beta"}),
+					RepositorySelection:  types.StringValue("selected"),
+					Permissions:          types.MapNull(types.StringType),
+					Events:               types.ListNull(types.StringType),
+					CreatedAt:            types.StringValue("2026-01-01T00:00:00Z"),
+					UpdatedAt:            types.StringValue("2026-01-02T00:00:00Z"),
+				},
 			},
+			wantErr: "",
 		},
-		"Mixed Selection Modes (All and Selected)": {
-			// Validates mapping when multiple installations are returned in a single organization,
-			// mixing both 'all' repository selection and 'selected' repository selection.
+		{
+			name: "selected_repositories_api_error",
 			input: []*github.Installation{
 				{
 					ID:                  github.Ptr(int64(33333)),
-					ClientID:            github.Ptr("mock-client-id-all"),
-					AppSlug:             github.Ptr("app-all"),
-					RepositorySelection: github.Ptr("all"),
-					CreatedAt:           &github.Timestamp{Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
-					UpdatedAt:           &github.Timestamp{Time: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)},
-				},
-				{
-					ID:                  github.Ptr(int64(44444)),
-					ClientID:            github.Ptr("mock-client-id-selected"),
-					AppSlug:             github.Ptr("app-selected"),
+					ClientID:            github.Ptr("mock-client-id-err"),
+					AppSlug:             github.Ptr("err-app"),
 					RepositorySelection: github.Ptr("selected"),
 					CreatedAt:           &github.Timestamp{Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
 					UpdatedAt:           &github.Timestamp{Time: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)},
 				},
 			},
-			expectedLength: 2,
-			verify: func(t *testing.T, result []app) {
-				// Verify first installation ("all")
-				resAll := result[0]
-				if resAll.ID.ValueString() != "33333" {
-					t.Errorf("expected first app ID 33333, got %s", resAll.ID.ValueString())
-				}
-				if resAll.RepositorySelection.ValueString() != "all" {
-					t.Errorf("expected first app RepositorySelection all, got %s", resAll.RepositorySelection.ValueString())
-				}
-				if !resAll.SelectedRepositories.IsNull() {
-					t.Errorf("expected first app SelectedRepositories to be Null, got %v", resAll.SelectedRepositories)
-				}
-
-				// Verify second installation ("selected")
-				resSelected := result[1]
-				if resSelected.ID.ValueString() != "44444" {
-					t.Errorf("expected second app ID 44444, got %s", resSelected.ID.ValueString())
-				}
-				if resSelected.RepositorySelection.ValueString() != "selected" {
-					t.Errorf("expected second app RepositorySelection selected, got %s", resSelected.RepositorySelection.ValueString())
-				}
-				var repos []string
-				diags := resSelected.SelectedRepositories.ElementsAs(ctx, &repos, false)
-				if diags.HasError() {
-					t.Fatalf("failed to parse selected repositories for second app: %v", diags.Errors())
-				}
-				if len(repos) != 2 || repos[0] != "repo-alpha" || repos[1] != "repo-beta" {
-					t.Errorf("expected [repo-alpha, repo-beta], got %v", repos)
-				}
+			rt: func(req *http.Request) (*http.Response, error) {
+				return nil, errors.New("list repos failure")
 			},
+			want:    nil,
+			wantErr: "Could not list repositories",
 		},
 	}
 
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			var diags diag.Diagnostics
-			result := flattenInstallations(ctx, mockGHClient, "test-ent", "test-org", tc.input, &diags)
-
-			if diags.HasError() {
-				t.Fatalf("flattenInstallations returned errors: %v", diags.Errors())
+			client := mockGHClient
+			if tc.rt != nil {
+				httpClient := &http.Client{Transport: tc.rt}
+				client, _ = github.NewClient(github.WithHTTPClient(httpClient))
 			}
 
-			if len(result) != tc.expectedLength {
-				t.Fatalf("expected result length %d, got %d", tc.expectedLength, len(result))
-			}
+			got := flattenInstallations(ctx, client, "test-ent", "test-org", tc.input, &diags)
 
-			tc.verify(t, result)
+			checkDiagnostics(t, diags, tc.wantErr)
+			if tc.wantErr == "" {
+				if diff := cmp.Diff(tc.want, got); diff != "" {
+					t.Errorf("flattenInstallations() mismatch (-want +got):\n%s", diff)
+				}
+			}
 		})
 	}
 }
 
-func TestAccInstallationsDataSource(t *testing.T) {
-	enterpriseSlug := os.Getenv("GITHUB_ENTERPRISE_SLUG")
-	targetOrg := os.Getenv("GITHUB_TARGET_ORG")
+func TestInstallationsDataSource_Unit_Configure(t *testing.T) {
+	t.Parallel()
 
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccInstallationsDataSourceConfig(enterpriseSlug, targetOrg),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("data.ghapp_installations.test", "installations.#"),
-				),
-			},
+	dummyClient := &GHClient{EnterpriseSlug: "ent"}
+
+	cases := []struct {
+		name         string
+		providerData any
+		wantClient   *GHClient
+		wantErr      string
+	}{
+		{
+			name:         "nil_provider_data",
+			providerData: nil,
+			wantClient:   nil,
+			wantErr:      "",
 		},
-	})
+		{
+			name:         "valid_provider_data",
+			providerData: dummyClient,
+			wantClient:   dummyClient,
+			wantErr:      "",
+		},
+		{
+			name:         "invalid_provider_data_type",
+			providerData: "not a gh client",
+			wantClient:   nil,
+			wantErr:      "Unexpected Configure Type",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			d := &installationsDataSource{}
+			resp := &datasource.ConfigureResponse{}
+
+			d.Configure(ctx, datasource.ConfigureRequest{ProviderData: tc.providerData}, resp)
+
+			checkDiagnostics(t, resp.Diagnostics, tc.wantErr)
+			if d.client != tc.wantClient {
+				t.Errorf("Configure() client = %v, want %v", d.client, tc.wantClient)
+			}
+		})
+	}
 }
 
-func testAccInstallationsDataSourceConfig(enterpriseSlug, targetOrg string) string {
-	return testAccProviderConfig(enterpriseSlug) + fmt.Sprintf(`
-data "ghapp_installations" "test" {
-	target_org = %[1]q
+// TestInstallationsDataSource_Unit_Metadata verifies that Metadata() sets the data source type name.
+func TestInstallationsDataSource_Unit_Metadata(t *testing.T) {
+	t.Parallel()
+	d := &installationsDataSource{}
+	var resp datasource.MetadataResponse
+	d.Metadata(context.Background(), datasource.MetadataRequest{ProviderTypeName: "ghapp"}, &resp)
+	if got, want := resp.TypeName, "ghapp_installations"; got != want {
+		t.Errorf("Metadata() TypeName = %q, want %q", got, want)
+	}
 }
-`, targetOrg)
+
+func TestInstallationsDataSource_Unit_Read(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		rt      roundTripperFunc
+		want    installation
+		wantErr string
+	}{
+		{
+			name: "read_success_200",
+			rt: func(req *http.Request) (*http.Response, error) {
+				body := `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewBufferString(body)),
+					Header:     make(http.Header),
+				}, nil
+			},
+			want: installation{
+				TargetOrg: types.StringValue("test-org"),
+				Installations: []app{
+					{
+						ID:                   types.StringValue("12345"),
+						ClientID:             types.StringValue(""),
+						AppSlug:              types.StringValue("test-app"),
+						SelectedRepositories: types.ListNull(types.StringType),
+						RepositorySelection:  types.StringValue("all"),
+						Permissions:          types.MapNull(types.StringType),
+						Events:               types.ListNull(types.StringType),
+						CreatedAt:            types.StringValue("2026-07-01T20:00:00Z"),
+						UpdatedAt:            types.StringValue("2026-07-01T20:00:00Z"),
+					},
+				},
+			},
+			wantErr: "",
+		},
+		{
+			name: "read_error_500",
+			rt: func(req *http.Request) (*http.Response, error) {
+				return nil, errors.New("list failure")
+			},
+			wantErr: "Failed to list installations",
+		},
+		{
+			name: "read_flatten_installations_error",
+			rt: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.Path, "repositories") {
+					return nil, errors.New("list repos failure during read")
+				}
+				body := `[{"id": 12345, "app_slug": "test-app", "repository_selection": "selected", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewBufferString(body)),
+					Header:     make(http.Header),
+				}, nil
+			},
+			wantErr: "Could not list repositories",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			d := &installationsDataSource{client: newTestGHClient(tc.rt)}
+
+			var schemaResp datasource.SchemaResponse
+			d.Schema(ctx, datasource.SchemaRequest{}, &schemaResp)
+
+			cfg := newTestConfig(t, ctx, schemaResp.Schema, installation{TargetOrg: types.StringValue("test-org")})
+			resp := &datasource.ReadResponse{State: tfsdk.State{Schema: schemaResp.Schema}}
+
+			d.Read(ctx, datasource.ReadRequest{Config: cfg}, resp)
+
+			checkDiagnostics(t, resp.Diagnostics, tc.wantErr)
+			if tc.wantErr == "" {
+				checkState(t, ctx, resp.State, tc.want)
+			}
+		})
+	}
 }
