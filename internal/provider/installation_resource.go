@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/go-github/v88/github"
@@ -23,6 +24,7 @@ import (
 var (
 	_ resource.Resource                   = &installationResource{}
 	_ resource.ResourceWithConfigure      = &installationResource{}
+	_ resource.ResourceWithImportState    = &installationResource{}
 	_ resource.ResourceWithValidateConfig = &installationResource{}
 )
 
@@ -302,6 +304,7 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	state.Events = eventsVal
 	state.CreatedAt = types.StringValue(foundInstallation.GetCreatedAt().Format(time.RFC3339))
 	state.UpdatedAt = types.StringValue(foundInstallation.GetUpdatedAt().Format(time.RFC3339))
+	state.ClientID = types.StringValue(foundInstallation.GetClientID())
 
 	// Update selected repositories if selection is "selected"
 	selectedReposVal := getSelectedRepositories(ctx, client, enterpriseSlug, state.TargetOrg.ValueString(), foundInstallation.GetID(), foundInstallation.GetRepositorySelection(), &resp.Diagnostics)
@@ -417,4 +420,29 @@ func (r *installationResource) Delete(ctx context.Context, req resource.DeleteRe
 		resp.Diagnostics.AddError("Failed to uninstall app", err.Error())
 		return
 	}
+}
+
+// ImportState handles the import of an existing resource. Expects <id> in the format <org>/<installation_id>.
+func (r *installationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	idParts := strings.Split(req.ID, "/")
+
+	if len(idParts) != 2 || idParts[0] == "" || idParts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Unexpected Import Identifier",
+			fmt.Sprintf("ID must be in the format <org>/<installation_id>. Got: %q", req.ID),
+		)
+		return
+	}
+
+	// Check if order of ID is valid (not <installation_id>/<org>)
+	if _, err := strconv.ParseInt(idParts[1], 10, 64); err != nil {
+		resp.Diagnostics.AddError(
+			"Unexpected Import Identifier",
+			fmt.Sprintf("Installation ID must be an integer. Ensure ID is in the format <org>/<installation_id>. Got: %q", req.ID),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("target_org"), idParts[0])...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
 }
