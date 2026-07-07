@@ -388,9 +388,7 @@ func TestFlattenPermissions(t *testing.T) {
 
 			got := flattenPermissions(ctx, tc.permissions, &diags)
 
-			if diff := diffErrString(diags, tc.wantErr); diff != "" {
-				t.Error(diff)
-			}
+			checkDiagnostics(t, diags, tc.wantErr)
 
 			if tc.wantErr == "" && tc.permissions != nil {
 				if got.IsNull() || got.IsUnknown() {
@@ -454,9 +452,7 @@ func TestGetSelectedRepositories(t *testing.T) {
 
 			got := getSelectedRepositories(ctx, client, "test-ent", "test-org", 123, tc.selection, &diags)
 
-			if diff := diffErrString(diags, tc.wantErr); diff != "" {
-				t.Error(diff)
-			}
+			checkDiagnostics(t, diags, tc.wantErr)
 
 			if tc.wantErr == "" && tc.selection == "selected" {
 				if got.IsNull() || got.IsUnknown() {
@@ -509,9 +505,7 @@ func TestGetGHClient(t *testing.T) {
 
 			got := getGHClient(ctx, tc.providerData, &diags)
 
-			if diff := diffErrString(diags, tc.wantErr); diff != "" {
-				t.Error(diff)
-			}
+			checkDiagnostics(t, diags, tc.wantErr)
 			if got != tc.wantClient {
 				t.Errorf("getGHClient() = %v, want %v", got, tc.wantClient)
 			}
