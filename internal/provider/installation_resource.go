@@ -434,7 +434,6 @@ func (r *installationResource) ImportState(ctx context.Context, req resource.Imp
 		return
 	}
 
-	// Check if order of ID is valid (not <installation_id>/<org>)
 	if _, err := strconv.ParseInt(idParts[1], 10, 64); err != nil {
 		resp.Diagnostics.AddError(
 			"Unexpected Import Identifier",
