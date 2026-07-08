@@ -424,3 +424,58 @@ func TestInstallationResource_Unit_Delete(t *testing.T) {
 		})
 	}
 }
+
+func TestInstallationResource_Unit_Import(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		id      string
+		wantErr string
+	}{
+		{
+			name:    "import_success",
+			id:      "test-org/12345",
+			wantErr: "",
+		},
+		{
+			name:    "import_invalid_id",
+			id:      "not-an-integer",
+			wantErr: "Unexpected Import Identifier",
+		},
+		{
+			name:    "import_invalid_format",
+			id:      "test-org/not-an-integer",
+			wantErr: "Unexpected Import Identifier",
+		},
+		{
+			name:    "import_invalid_flipped",
+			id:      "12456/test-org",
+			wantErr: "Unexpected Import Identifier",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			r := &installationResource{}
+
+			var schemaResp resource.SchemaResponse
+			r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+
+			// Import starts with an empty/unpopulated state object in Terraform before ImportState populates attributes.
+			model := newTestResourceModel("", "", "", "", nil)
+			state := newTestState(t, ctx, schemaResp.Schema, model)
+
+			req := resource.ImportStateRequest{
+				ID: tc.id,
+			}
+			resp := &resource.ImportStateResponse{State: state}
+
+			r.ImportState(ctx, req, resp)
+
+			checkDiagnostics(t, resp.Diagnostics, tc.wantErr)
+		})
+	}
+}
