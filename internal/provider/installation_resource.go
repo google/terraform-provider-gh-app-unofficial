@@ -441,5 +441,15 @@ func (r *installationResource) Delete(ctx context.Context, req resource.DeleteRe
 
 // ImportState handles the import of an existing resource. Expects <id> in the format <org>/<installation_id>.
 func (r *installationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	targetOrg, _, _, err := parseCompositeID(req.ID)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unexpected Import Identifier",
+			fmt.Sprintf("ID must be in the format <org>/<installation_id>. Got: %q (%s)", req.ID, err.Error()),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("target_org"), targetOrg)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 }
