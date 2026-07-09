@@ -32,5 +32,5 @@ provider "ghapp" {
 
 ### Optional
 
-- `base_url` (String) The GitHub Enterprise Server or custom API Base URL. Defaults to `https://api.github.com/`.
+- `base_url` (String) The GitHub Enterprise Server or custom API Base URL. Defaults to `https://api.github.com/`. Can also be set via GITHUB_BASE_URL, GITHUB_ENTERPRISE_BASE_URL, or GITHUB_API_URL environment variables.
 - `token` (String, Sensitive) The GitHub App Installation Access Token. Can also be set via GITHUB_TOKEN environment variable.

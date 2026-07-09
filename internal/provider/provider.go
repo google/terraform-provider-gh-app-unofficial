@@ -56,7 +56,7 @@ func (p *GHAppProvider) Schema(ctx context.Context, req provider.SchemaRequest, 
 			},
 			"base_url": schema.StringAttribute{
 				Optional:    true,
-				Description: "The GitHub Enterprise Server or custom API Base URL. Defaults to `https://api.github.com/`.",
+				Description: "The GitHub Enterprise Server or custom API Base URL. Defaults to `https://api.github.com/`. Can also be set via GITHUB_BASE_URL, GITHUB_ENTERPRISE_BASE_URL, or GITHUB_API_URL environment variables.",
 			},
 		},
 	}
@@ -99,20 +99,26 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 
 	token := os.Getenv("GITHUB_TOKEN")
 	entpriseSlug := config.EnterpriseSlug.ValueString()
+	baseURL := os.Getenv("GITHUB_BASE_URL")
+	if baseURL == "" {
+		baseURL = os.Getenv("GITHUB_ENTERPRISE_BASE_URL")
+	}
+	if baseURL == "" {
+		baseURL = os.Getenv("GITHUB_API_URL")
+	}
 
 	// configuration takes precedence over environment variable
 	if !config.Token.IsNull() {
 		token = config.Token.ValueString()
 	}
 
-	baseURL := ""
 	if !config.BaseURL.IsNull() {
 		baseURL = config.BaseURL.ValueString()
 	}
 
 	// validation
 	if token == "" {
-		resp.Diagnostics.AddError("Missing API Token", "The token attribute must be set.")
+		resp.Diagnostics.AddError("Missing API Token", "The token attribute or GITHUB_TOKEN environment variable must be set.")
 	}
 
 	if entpriseSlug == "" {
