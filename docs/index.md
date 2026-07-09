@@ -16,6 +16,10 @@ provider "ghapp" {
   enterprise_slug = "my-enterprise-slug"
   # token can also be set via the GITHUB_TOKEN environment variable
   # token           = "your-installation-access-token"
+
+  # Optional: For GitHub Enterprise Server (on-premise) or custom API endpoints.
+  # Can also be set via GITHUB_BASE_URL or GITHUB_ENTERPRISE_BASE_URL.
+  # base_url        = "https://github.mycompany.com"
 }
 ```
 
@@ -28,4 +32,5 @@ provider "ghapp" {
 
 ### Optional
 
+- `base_url` (String) The GitHub Enterprise Server or custom API Base URL. Defaults to `https://api.github.com/`.
 - `token` (String, Sensitive) The GitHub App Installation Access Token. Can also be set via GITHUB_TOKEN environment variable.

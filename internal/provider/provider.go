@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"golang.org/x/oauth2"
 
 	"github.com/google/go-github/v88/github"
 )
@@ -55,6 +54,10 @@ func (p *GHAppProvider) Schema(ctx context.Context, req provider.SchemaRequest, 
 				Required:    true,
 				Description: "The URL-friendly slug of the GitHub Enterprise account.",
 			},
+			"base_url": schema.StringAttribute{
+				Optional:    true,
+				Description: "The GitHub Enterprise Server or custom API Base URL. Defaults to `https://api.github.com/`.",
+			},
 		},
 	}
 }
@@ -62,6 +65,7 @@ func (p *GHAppProvider) Schema(ctx context.Context, req provider.SchemaRequest, 
 type ghProviderModel struct {
 	Token          types.String `tfsdk:"token"`
 	EnterpriseSlug types.String `tfsdk:"enterprise_slug"`
+	BaseURL        types.String `tfsdk:"base_url"`
 }
 
 type GHClient struct {
@@ -85,6 +89,10 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		resp.Diagnostics.AddError("Unknown Enterprise Slug", "The provider cannot evaluate the enterprise slug.")
 	}
 
+	if config.BaseURL.IsUnknown() {
+		resp.Diagnostics.AddError("Unknown Base URL", "The provider cannot evaluate the base URL.")
+	}
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -95,6 +103,11 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	// configuration takes precedence over environment variable
 	if !config.Token.IsNull() {
 		token = config.Token.ValueString()
+	}
+
+	baseURL := ""
+	if !config.BaseURL.IsNull() {
+		baseURL = config.BaseURL.ValueString()
 	}
 
 	// validation
@@ -113,13 +126,29 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	tflog.Info(ctx, "Configuring GitHub client settings", map[string]interface{}{
 		"enterprise_slug": entpriseSlug,
 		"token_set":       token != "",
+		"base_url":        baseURL,
 	})
 
 	// initialize the client
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: token},
-	)
-	ghClient, err := github.NewClient(github.WithHTTPClient(oauth2.NewClient(ctx, ts)))
+	clientOpts := []github.ClientOptionsFunc{
+		github.WithAuthToken(token),
+	}
+
+	var err error
+	if baseURL != "" {
+		baseURL, err = formatBaseURL(baseURL)
+		if err != nil {
+			resp.Diagnostics.AddError("Invalid Base URL", fmt.Sprintf("Unable to parse base URL: %s", err))
+			return
+		}
+	} else {
+		baseURL = "https://api.github.com/"
+	}
+
+	clientOpts = append(clientOpts, github.WithURLs(&baseURL, nil))
+
+	ghClient, err := github.NewClient(clientOpts...)
+
 	if err != nil {
 		tflog.Error(ctx, "Failed to create GitHub client", map[string]interface{}{
 			"error": err.Error(),
