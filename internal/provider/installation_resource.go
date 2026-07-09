@@ -3,8 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/go-github/v88/github"
@@ -36,6 +34,7 @@ type installationResource struct {
 // installationResourceModel describes the resource data model.
 type installationResourceModel struct {
 	ID                   types.String `tfsdk:"id"`
+	InstallationID       types.String `tfsdk:"installation_id"`
 	TargetOrg            types.String `tfsdk:"target_org"`
 	ClientID             types.String `tfsdk:"client_id"`
 	AppSlug              types.String `tfsdk:"app_slug"`
@@ -58,7 +57,14 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "The ID of the app installation.",
+				MarkdownDescription: "The composite ID of the app installation in the format `<target_org>/<installation_id>`.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"installation_id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The numeric ID of the app installation.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -230,7 +236,9 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	plan.ID = types.StringValue(fmt.Sprintf("%d", installation.GetID()))
+	instIDStr := fmt.Sprintf("%d", installation.GetID())
+	plan.ID = types.StringValue(fmt.Sprintf("%s/%s", targetOrg, instIDStr))
+	plan.InstallationID = types.StringValue(instIDStr)
 	plan.AppSlug = types.StringValue(installation.GetAppSlug())
 	plan.RepositorySelection = types.StringValue(installation.GetRepositorySelection())
 	plan.Permissions = permissionsVal
@@ -264,8 +272,14 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	client := r.client.Client
 	enterpriseSlug := r.client.EnterpriseSlug
 
+	targetOrg, _, instIDStr, err := parseInstallationCompositeID(state.ID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Unexpected Identifier", err.Error())
+		return
+	}
+
 	// List installations for the organization
-	installations, _, err := client.Enterprise.ListAppInstallations(ctx, enterpriseSlug, state.TargetOrg.ValueString(), nil)
+	installations, _, err := client.Enterprise.ListAppInstallations(ctx, enterpriseSlug, targetOrg, nil)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading GitHub App Installations",
@@ -276,7 +290,7 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 
 	var foundInstallation *github.Installation
 	for _, inst := range installations {
-		if fmt.Sprintf("%d", inst.GetID()) == state.ID.ValueString() {
+		if fmt.Sprintf("%d", inst.GetID()) == instIDStr {
 			foundInstallation = inst
 			break
 		}
@@ -298,6 +312,9 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
+	state.ID = types.StringValue(fmt.Sprintf("%s/%s", targetOrg, instIDStr))
+	state.InstallationID = types.StringValue(instIDStr)
+	state.TargetOrg = types.StringValue(targetOrg)
 	state.AppSlug = types.StringValue(foundInstallation.GetAppSlug())
 	state.RepositorySelection = types.StringValue(foundInstallation.GetRepositorySelection())
 	state.Permissions = permissionsVal
@@ -307,7 +324,7 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	state.ClientID = types.StringValue(foundInstallation.GetClientID())
 
 	// Update selected repositories if selection is "selected"
-	selectedReposVal := getSelectedRepositories(ctx, client, enterpriseSlug, state.TargetOrg.ValueString(), foundInstallation.GetID(), foundInstallation.GetRepositorySelection(), &resp.Diagnostics)
+	selectedReposVal := getSelectedRepositories(ctx, client, enterpriseSlug, targetOrg, foundInstallation.GetID(), foundInstallation.GetRepositorySelection(), &resp.Diagnostics)
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -329,16 +346,14 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	instIDStr := plan.ID.ValueString()
-	instID, err := strconv.ParseInt(instIDStr, 10, 64)
+	targetOrg, instID, _, err := parseInstallationCompositeID(plan.ID.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Invalid installation ID", err.Error())
+		resp.Diagnostics.AddError("Unexpected Identifier", err.Error())
 		return
 	}
 
 	client := r.client.Client
 	enterpriseSlug := r.client.EnterpriseSlug
-	targetOrg := plan.TargetOrg.ValueString()
 
 	selectedRepos := listToStringSlice(ctx, plan.SelectedRepositories, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -376,6 +391,9 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
+	plan.ID = types.StringValue(fmt.Sprintf("%s/%d", targetOrg, instID))
+	plan.InstallationID = types.StringValue(fmt.Sprintf("%d", instID))
+	plan.TargetOrg = types.StringValue(targetOrg)
 	plan.AppSlug = types.StringValue(installation.GetAppSlug())
 	plan.RepositorySelection = types.StringValue(installation.GetRepositorySelection())
 	plan.Permissions = permissionsVal
@@ -407,11 +425,10 @@ func (r *installationResource) Delete(ctx context.Context, req resource.DeleteRe
 
 	client := r.client.Client
 	enterpriseSlug := r.client.EnterpriseSlug
-	targetOrg := state.TargetOrg.ValueString()
-	instIDStr := state.ID.ValueString()
-	instID, err := strconv.ParseInt(instIDStr, 10, 64)
+
+	targetOrg, instID, _, err := parseInstallationCompositeID(state.ID.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Invalid installation ID", err.Error())
+		resp.Diagnostics.AddError("Unexpected Identifier", err.Error())
 		return
 	}
 
@@ -424,24 +441,5 @@ func (r *installationResource) Delete(ctx context.Context, req resource.DeleteRe
 
 // ImportState handles the import of an existing resource. Expects <id> in the format <org>/<installation_id>.
 func (r *installationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	idParts := strings.Split(req.ID, "/")
-
-	if len(idParts) != 2 || idParts[0] == "" || idParts[1] == "" {
-		resp.Diagnostics.AddError(
-			"Unexpected Import Identifier",
-			fmt.Sprintf("ID must be in the format <org>/<installation_id>. Got: %q", req.ID),
-		)
-		return
-	}
-
-	if _, err := strconv.ParseInt(idParts[1], 10, 64); err != nil {
-		resp.Diagnostics.AddError(
-			"Unexpected Import Identifier",
-			fmt.Sprintf("Installation ID must be an integer. Ensure ID is in the format <org>/<installation_id>. Got: %q", req.ID),
-		)
-		return
-	}
-
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("target_org"), idParts[0])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

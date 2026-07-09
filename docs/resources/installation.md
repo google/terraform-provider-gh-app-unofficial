@@ -83,6 +83,7 @@ output "installation" {
 - `app_slug` (String) The slug of the app.
 - `created_at` (String) The creation timestamp of the app installation.
 - `events` (List of String) The events for the app installation.
-- `id` (String) The ID of the app installation.
+- `id` (String) The composite ID of the app installation in the format `<target_org>/<installation_id>`.
+- `installation_id` (String) The numeric ID of the app installation.
 - `permissions` (Map of String) The permissions for the app installation.
 - `updated_at` (String) The update timestamp of the app installation.
