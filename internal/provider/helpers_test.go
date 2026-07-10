@@ -1,11 +1,39 @@
-// Copyright IBM Corp. 2021, 2025
-// SPDX-License-Identifier: MPL-2.0
-
 package provider
 
 import (
+	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 )
+
+func diffErrString(diags diag.Diagnostics, wantErr string) string {
+	if wantErr == "" {
+		if diags.HasError() {
+			return fmt.Sprintf("got unexpected diagnostics: %v", diags)
+		}
+		return ""
+	}
+
+	if !diags.HasError() {
+		return fmt.Sprintf("expected error containing %q, got no error", wantErr)
+	}
+	for _, d := range diags.Errors() {
+		if strings.Contains(d.Summary(), wantErr) || strings.Contains(d.Detail(), wantErr) {
+			return ""
+		}
+	}
+	return fmt.Sprintf("expected error containing %q, got diagnostics: %v", wantErr, diags)
+}
+
+// checkDiagnostics asserts that diags contains (or doesn't contain) the expected error substring.
+func checkDiagnostics(t *testing.T, diags diag.Diagnostics, wantErr string) {
+	t.Helper()
+	if diff := diffErrString(diags, wantErr); diff != "" {
+		t.Error(diff)
+	}
+}
 
 func TestFormatBaseURL(t *testing.T) {
 	t.Parallel()
@@ -14,105 +42,98 @@ func TestFormatBaseURL(t *testing.T) {
 		name    string
 		rawURL  string
 		want    string
-		wantErr bool
+		wantErr string
 	}{
 		{
 			name:    "empty_url",
 			rawURL:  "",
-			wantErr: true,
+			wantErr: "base URL must not be empty",
 		},
 		{
 			name:    "standard_domain_no_slash",
 			rawURL:  "https://github.mycompany.com",
 			want:    "https://github.mycompany.com/api/v3/",
-			wantErr: false,
+			wantErr: "",
 		},
 		{
 			name:    "standard_domain_with_slash",
 			rawURL:  "https://github.mycompany.com/",
 			want:    "https://github.mycompany.com/api/v3/",
-			wantErr: false,
+			wantErr: "",
 		},
 		{
 			name:    "domain_with_api_v3_no_slash",
 			rawURL:  "https://github.mycompany.com/api/v3",
 			want:    "https://github.mycompany.com/api/v3/",
-			wantErr: false,
+			wantErr: "",
 		},
 		{
 			name:    "domain_with_api_v3_with_slash",
 			rawURL:  "https://github.mycompany.com/api/v3/",
 			want:    "https://github.mycompany.com/api/v3/",
-			wantErr: false,
+			wantErr: "",
 		},
 		{
 			name:    "https_custom_port",
 			rawURL:  "https://127.0.0.1:8080",
 			want:    "https://127.0.0.1:8080/api/v3/",
-			wantErr: false,
+			wantErr: "",
 		},
 		{
 			name:    "http_scheme_disallowed",
 			rawURL:  "http://127.0.0.1:8080",
-			wantErr: true,
+			wantErr: "base URL must use the https scheme",
 		},
 		{
 			name:    "subpath_domain",
 			rawURL:  "https://corp.com/ghe",
 			want:    "https://corp.com/ghe/",
-			wantErr: false,
+			wantErr: "",
 		},
 		{
 			name:    "depot_domain",
 			rawURL:  "https://depot.code.corp.goog/",
 			want:    "https://depot.code.corp.goog/api/v3/",
-			wantErr: false,
+			wantErr: "",
 		},
 		{
 			name:    "depot_domain_no_schema",
 			rawURL:  "depot.code.corp.goog",
 			want:    "https://depot.code.corp.goog/api/v3/",
-			wantErr: false,
+			wantErr: "",
 		},
 		{
 			name:    "dotcom_api",
 			rawURL:  "https://api.github.com",
 			want:    "https://api.github.com/",
-			wantErr: false,
+			wantErr: "",
 		},
 		{
 			name:    "dotcom_ui",
 			rawURL:  "https://github.com",
 			want:    "https://api.github.com/",
-			wantErr: false,
+			wantErr: "",
 		},
 		{
 			name:    "ghec_ui",
 			rawURL:  "https://customer.ghe.com",
 			want:    "https://customer.ghe.com/api/v3/",
-			wantErr: false,
+			wantErr: "",
 		},
 		{
 			name:    "invalid_url",
 			rawURL:  "://invalid-url",
-			wantErr: true,
+			wantErr: "missing protocol scheme",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := formatBaseURL(tc.rawURL)
-			if tc.wantErr {
-				if err == nil {
-					t.Errorf("formatBaseURL(%q) expected error, got nil", tc.rawURL)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("formatBaseURL(%q) unexpected error: %v", tc.rawURL, err)
-			}
-			if got != tc.want {
+			var diags diag.Diagnostics
+			got := formatBaseURL(tc.rawURL, &diags)
+			checkDiagnostics(t, diags, tc.wantErr)
+			if tc.wantErr == "" && got != tc.want {
 				t.Errorf("formatBaseURL(%q) = %q, want %q", tc.rawURL, got, tc.want)
 			}
 		})

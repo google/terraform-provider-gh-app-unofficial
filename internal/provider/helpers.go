@@ -137,9 +137,10 @@ const (
 	ghesRESTAPIPath = "api/v3/"
 )
 
-func formatBaseURL(baseURL string) (string, error) {
+func formatBaseURL(baseURL string, diags *diag.Diagnostics) string {
 	if baseURL == "" {
-		return "", fmt.Errorf("base URL must not be empty")
+		diags.AddError("Invalid Base URL", "base URL must not be empty")
+		return ""
 	}
 
 	if !strings.Contains(baseURL, "://") {
@@ -148,11 +149,13 @@ func formatBaseURL(baseURL string) (string, error) {
 
 	u, err := url.Parse(baseURL)
 	if err != nil {
-		return "", err
+		diags.AddError("Invalid Base URL", fmt.Sprintf("Unable to parse base URL: %s", err))
+		return ""
 	}
 
 	if u.Scheme != "https" {
-		return "", fmt.Errorf("base URL must use the https scheme")
+		diags.AddError("Invalid Base URL", "base URL must use the https scheme")
+		return ""
 	}
 
 	// Ensure URL has a trailing slash
@@ -169,6 +172,5 @@ func formatBaseURL(baseURL string) (string, error) {
 		}
 	}
 
-	return u.String(), nil
-
+	return u.String()
 }

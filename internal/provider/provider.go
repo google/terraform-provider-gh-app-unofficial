@@ -140,11 +140,9 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		github.WithAuthToken(token),
 	}
 
-	var err error
 	if baseURL != "" {
-		baseURL, err = formatBaseURL(baseURL)
-		if err != nil {
-			resp.Diagnostics.AddError("Invalid Base URL", fmt.Sprintf("Unable to parse base URL: %s", err))
+		baseURL = formatBaseURL(baseURL, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
 			return
 		}
 	} else {
