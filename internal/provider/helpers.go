@@ -112,9 +112,9 @@ func getGHClient(ctx context.Context, providerData any, diags *diag.Diagnostics)
 	return client
 }
 
-// parseInstallationCompositeID parses an ID string in the format "<target_org>/<installation_id>"
+// parseCompositeID parses an ID string in the format "<target_org>/<installation_id>"
 // and returns the target organization, installation numeric ID as int64, installation ID as string, and an error if malformed.
-func parseInstallationCompositeID(id string) (targetOrg string, instID int64, instIDStr string, err error) {
+func parseCompositeID(id string) (targetOrg string, instID int64, instIDStr string, err error) {
 	parts := strings.Split(id, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", 0, "", fmt.Errorf("ID must be in the format <target_org>/<installation_id>, got: %q", id)

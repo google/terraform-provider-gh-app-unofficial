@@ -272,7 +272,7 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	client := r.client.Client
 	enterpriseSlug := r.client.EnterpriseSlug
 
-	targetOrg, _, instIDStr, err := parseInstallationCompositeID(state.ID.ValueString())
+	targetOrg, _, instIDStr, err := parseCompositeID(state.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Unexpected Identifier", err.Error())
 		return
@@ -346,7 +346,7 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	targetOrg, instID, _, err := parseInstallationCompositeID(plan.ID.ValueString())
+	targetOrg, instID, _, err := parseCompositeID(plan.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Unexpected Identifier", err.Error())
 		return
@@ -426,7 +426,7 @@ func (r *installationResource) Delete(ctx context.Context, req resource.DeleteRe
 	client := r.client.Client
 	enterpriseSlug := r.client.EnterpriseSlug
 
-	targetOrg, instID, _, err := parseInstallationCompositeID(state.ID.ValueString())
+	targetOrg, instID, _, err := parseCompositeID(state.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Unexpected Identifier", err.Error())
 		return
