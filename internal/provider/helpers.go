@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/google/go-github/v88/github"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -108,4 +110,22 @@ func getGHClient(ctx context.Context, providerData any, diags *diag.Diagnostics)
 	}
 
 	return client
+}
+
+// parseCompositeID parses an ID string in the format "<target_org>/<installation_id>"
+// and returns the target organization, installation numeric ID as int64, installation ID as string, and an error if malformed.
+func parseCompositeID(id string) (targetOrg string, instID int64, instIDStr string, err error) {
+	parts := strings.Split(id, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", 0, "", fmt.Errorf("ID must be in the format <target_org>/<installation_id>, got: %q", id)
+	}
+
+	targetOrg = parts[0]
+	instIDStr = parts[1]
+	instID, err = strconv.ParseInt(instIDStr, 10, 64)
+	if err != nil {
+		return "", 0, "", fmt.Errorf("installation ID must be an integer, got: %q (%w)", instIDStr, err)
+	}
+
+	return targetOrg, instID, instIDStr, nil
 }
