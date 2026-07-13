@@ -408,7 +408,7 @@ func TestInstallationResource_Unit_Import(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
-			var rt roundTripperFunc = mockHTTPResponse(http.StatusOK, `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`)
+			rt := mockHTTPResponse(http.StatusOK, `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`)
 			r := &installationResource{client: newTestGHClient(rt)}
 
 			var schemaResp resource.SchemaResponse

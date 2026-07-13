@@ -220,8 +220,8 @@ func TestInstallationsDataSource_Unit_Read(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "read_success_200",
-			rt:      mockHTTPResponse(http.StatusOK, `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`),
+			name: "read_success_200",
+			rt:   mockHTTPResponse(http.StatusOK, `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`),
 			want: installation{
 				TargetOrg: types.StringValue("test-org"),
 				Installations: []app{
