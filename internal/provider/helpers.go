@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -128,4 +129,48 @@ func parseCompositeID(id string) (targetOrg string, instID int64, instIDStr stri
 	}
 
 	return targetOrg, instID, instIDStr, nil
+}
+
+const (
+	dotComAPIHost   = "api.github.com"
+	dotComHost      = "github.com"
+	ghesRESTAPIPath = "api/v3/"
+)
+
+func formatBaseURL(baseURL string, diags *diag.Diagnostics) string {
+	if baseURL == "" {
+		diags.AddError("Invalid Base URL", "base URL must not be empty")
+		return ""
+	}
+
+	if !strings.Contains(baseURL, "://") {
+		baseURL = "https://" + baseURL
+	}
+
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		diags.AddError("Invalid Base URL", fmt.Sprintf("Unable to parse base URL: %s", err))
+		return ""
+	}
+
+	if u.Scheme != "https" {
+		diags.AddError("Invalid Base URL", "base URL must use the https scheme")
+		return ""
+	}
+
+	// Ensure URL has a trailing slash
+	u = u.JoinPath("/")
+
+	switch u.Host {
+	case dotComHost:
+		u.Host = dotComAPIHost
+	case dotComAPIHost:
+	default:
+		// Assume it's Enterprise Server
+		if u.Path == "/" {
+			u.Path = ghesRESTAPIPath
+		}
+	}
+
+	return u.String()
 }

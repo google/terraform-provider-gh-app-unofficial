@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"golang.org/x/oauth2"
 
 	"github.com/google/go-github/v88/github"
 )
@@ -55,6 +54,10 @@ func (p *GHAppProvider) Schema(ctx context.Context, req provider.SchemaRequest, 
 				Required:    true,
 				Description: "The URL-friendly slug of the GitHub Enterprise account.",
 			},
+			"base_url": schema.StringAttribute{
+				Optional:    true,
+				Description: "The GitHub Enterprise Server or custom API Base URL. Defaults to `https://api.github.com/`. Can also be set via GITHUB_BASE_URL, GITHUB_ENTERPRISE_BASE_URL, or GITHUB_API_URL environment variables.",
+			},
 		},
 	}
 }
@@ -62,6 +65,7 @@ func (p *GHAppProvider) Schema(ctx context.Context, req provider.SchemaRequest, 
 type ghProviderModel struct {
 	Token          types.String `tfsdk:"token"`
 	EnterpriseSlug types.String `tfsdk:"enterprise_slug"`
+	BaseURL        types.String `tfsdk:"base_url"`
 }
 
 type GHClient struct {
@@ -85,21 +89,36 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		resp.Diagnostics.AddError("Unknown Enterprise Slug", "The provider cannot evaluate the enterprise slug.")
 	}
 
+	if config.BaseURL.IsUnknown() {
+		resp.Diagnostics.AddError("Unknown Base URL", "The provider cannot evaluate the base URL.")
+	}
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	token := os.Getenv("GITHUB_TOKEN")
 	entpriseSlug := config.EnterpriseSlug.ValueString()
+	baseURL := os.Getenv("GITHUB_BASE_URL")
+	if baseURL == "" {
+		baseURL = os.Getenv("GITHUB_ENTERPRISE_BASE_URL")
+	}
+	if baseURL == "" {
+		baseURL = os.Getenv("GITHUB_API_URL")
+	}
 
 	// configuration takes precedence over environment variable
 	if !config.Token.IsNull() {
 		token = config.Token.ValueString()
 	}
 
+	if !config.BaseURL.IsNull() {
+		baseURL = config.BaseURL.ValueString()
+	}
+
 	// validation
 	if token == "" {
-		resp.Diagnostics.AddError("Missing API Token", "The token attribute must be set.")
+		resp.Diagnostics.AddError("Missing API Token", "The token attribute or GITHUB_TOKEN environment variable must be set.")
 	}
 
 	if entpriseSlug == "" {
@@ -113,13 +132,27 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	tflog.Info(ctx, "Configuring GitHub client settings", map[string]interface{}{
 		"enterprise_slug": entpriseSlug,
 		"token_set":       token != "",
+		"base_url":        baseURL,
 	})
 
 	// initialize the client
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: token},
-	)
-	ghClient, err := github.NewClient(github.WithHTTPClient(oauth2.NewClient(ctx, ts)))
+	clientOpts := []github.ClientOptionsFunc{
+		github.WithAuthToken(token),
+	}
+
+	if baseURL != "" {
+		baseURL = formatBaseURL(baseURL, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		baseURL = "https://api.github.com/"
+	}
+
+	clientOpts = append(clientOpts, github.WithURLs(&baseURL, nil))
+
+	ghClient, err := github.NewClient(clientOpts...)
+
 	if err != nil {
 		tflog.Error(ctx, "Failed to create GitHub client", map[string]interface{}{
 			"error": err.Error(),
