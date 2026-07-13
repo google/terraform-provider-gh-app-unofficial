@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/google/go-github/v88/github"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -26,29 +24,53 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-func diffErrString(diags diag.Diagnostics, wantErr string) string {
-	if wantErr == "" {
-		if diags.HasError() {
-			return fmt.Sprintf("got unexpected diagnostics: %v", diags)
+func diffErrString(errOrDiags any, wantErr string) string {
+	if diags, ok := errOrDiags.(diag.Diagnostics); ok {
+		if wantErr == "" {
+			if diags.HasError() {
+				return fmt.Sprintf("got unexpected diagnostics: %v", diags)
+			}
+			return ""
+		}
+
+		if !diags.HasError() {
+			return fmt.Sprintf("expected error containing %q, got no error", wantErr)
+		}
+		for _, d := range diags.Errors() {
+			if strings.Contains(d.Summary(), wantErr) || strings.Contains(d.Detail(), wantErr) {
+				return ""
+			}
+		}
+		return fmt.Sprintf("expected error containing %q, got diagnostics: %v", wantErr, diags)
+	}
+
+	if err, ok := errOrDiags.(error); ok {
+		if wantErr == "" {
+			if err != nil {
+				return fmt.Sprintf("got unexpected error: %v", err)
+			}
+			return ""
+		}
+		if err == nil {
+			return fmt.Sprintf("expected error containing %q, got nil", wantErr)
+		}
+		if !strings.Contains(err.Error(), wantErr) {
+			return fmt.Sprintf("expected error containing %q, got: %v", wantErr, err)
 		}
 		return ""
 	}
 
-	if !diags.HasError() {
-		return fmt.Sprintf("expected error containing %q, got no error", wantErr)
+	if wantErr == "" && errOrDiags == nil {
+		return ""
 	}
-	for _, d := range diags.Errors() {
-		if strings.Contains(d.Summary(), wantErr) || strings.Contains(d.Detail(), wantErr) {
-			return ""
-		}
-	}
-	return fmt.Sprintf("expected error containing %q, got diagnostics: %v", wantErr, diags)
+
+	return fmt.Sprintf("unsupported type for diffErrString: %T", errOrDiags)
 }
 
-// checkDiagnostics asserts that diags contains (or doesn't contain) the expected error substring.
-func checkDiagnostics(t *testing.T, diags diag.Diagnostics, wantErr string) {
+// checkDiagnostics asserts that diags (diag.Diagnostics) or err (error) contains (or doesn't contain) the expected error substring.
+func checkDiagnostics(t *testing.T, errOrDiags any, wantErr string) {
 	t.Helper()
-	if diff := diffErrString(diags, wantErr); diff != "" {
+	if diff := diffErrString(errOrDiags, wantErr); diff != "" {
 		t.Error(diff)
 	}
 }
@@ -155,115 +177,6 @@ func TestFormatBaseURL(t *testing.T) {
 				t.Errorf("formatBaseURL(%q) = %q, want %q", tc.rawURL, got, tc.want)
 			}
 		})
-	}
-}
-
-// newTestGHClient constructs a *GHClient wrapping an http.Client with the given http.RoundTripper.
-func newTestGHClient(rt http.RoundTripper) *GHClient {
-	httpClient := &http.Client{Transport: rt}
-	ghClient, _ := github.NewClient(github.WithHTTPClient(httpClient))
-	return &GHClient{Client: ghClient, EnterpriseSlug: "test-ent"}
-}
-
-// newTestConfig creates a tfsdk.Config from a Go model struct for unit testing.
-func newTestConfig[T any](t *testing.T, ctx context.Context, s any, model T) tfsdk.Config {
-	t.Helper()
-	type typeable interface{ Type() attr.Type }
-	typ, ok := s.(typeable)
-	if !ok {
-		t.Fatalf("schema does not implement Type(): %T", s)
-	}
-	var objVal attr.Value
-	if err := tfsdk.ValueFrom(ctx, model, typ.Type(), &objVal); err != nil {
-		t.Fatalf("failed to convert model to attr.Value: %v", err)
-	}
-	rawVal, err := objVal.ToTerraformValue(ctx)
-	if err != nil {
-		t.Fatalf("failed to convert to terraform value: %v", err)
-	}
-	cfg := tfsdk.Config{Raw: rawVal}
-	reflect.ValueOf(&cfg).Elem().FieldByName("Schema").Set(reflect.ValueOf(s))
-	return cfg
-}
-
-// newTestPlan creates a tfsdk.Plan from a Go model struct for unit testing.
-func newTestPlan[T any](t *testing.T, ctx context.Context, s any, model T) tfsdk.Plan {
-	t.Helper()
-	type typeable interface{ Type() attr.Type }
-	typ, ok := s.(typeable)
-	if !ok {
-		t.Fatalf("schema does not implement Type(): %T", s)
-	}
-	var objVal attr.Value
-	if err := tfsdk.ValueFrom(ctx, model, typ.Type(), &objVal); err != nil {
-		t.Fatalf("failed to convert model to attr.Value: %v", err)
-	}
-	rawVal, err := objVal.ToTerraformValue(ctx)
-	if err != nil {
-		t.Fatalf("failed to convert to terraform value: %v", err)
-	}
-	plan := tfsdk.Plan{Raw: rawVal}
-	reflect.ValueOf(&plan).Elem().FieldByName("Schema").Set(reflect.ValueOf(s))
-	return plan
-}
-
-// newTestState creates a tfsdk.State from a Go model struct for unit testing.
-func newTestState[T any](t *testing.T, ctx context.Context, s any, model T) tfsdk.State {
-	t.Helper()
-	type typeable interface{ Type() attr.Type }
-	typ, ok := s.(typeable)
-	if !ok {
-		t.Fatalf("schema does not implement Type(): %T", s)
-	}
-	var objVal attr.Value
-	if err := tfsdk.ValueFrom(ctx, model, typ.Type(), &objVal); err != nil {
-		t.Fatalf("failed to convert model to attr.Value: %v", err)
-	}
-	rawVal, err := objVal.ToTerraformValue(ctx)
-	if err != nil {
-		t.Fatalf("failed to convert to terraform value: %v", err)
-	}
-	state := tfsdk.State{Raw: rawVal}
-	reflect.ValueOf(&state).Elem().FieldByName("Schema").Set(reflect.ValueOf(s))
-	return state
-}
-
-// newTestResourceModel constructs a fully initialized installationResourceModel with valid element types for unit testing.
-func newTestResourceModel(id, targetOrg, clientID, selection string, repos []string) installationResourceModel {
-	var repoListAttr types.List
-	if len(repos) > 0 {
-		var vals []attr.Value
-		for _, r := range repos {
-			vals = append(vals, types.StringValue(r))
-		}
-		repoListAttr = types.ListValueMust(types.StringType, vals)
-	} else {
-		repoListAttr = types.ListNull(types.StringType)
-	}
-
-	return installationResourceModel{
-		ID:                   types.StringValue(id),
-		TargetOrg:            types.StringValue(targetOrg),
-		ClientID:             types.StringValue(clientID),
-		AppSlug:              types.StringValue("test-app"),
-		SelectedRepositories: repoListAttr,
-		RepositorySelection:  types.StringValue(selection),
-		Events:               types.ListNull(types.StringType),
-		Permissions:          types.MapNull(types.StringType),
-		CreatedAt:            types.StringValue("2026-07-01T20:00:00Z"),
-		UpdatedAt:            types.StringValue("2026-07-01T20:00:00Z"),
-	}
-}
-
-// checkState unpacks the response state and asserts equality against want using cmp.Diff.
-func checkState[T any](t *testing.T, ctx context.Context, state tfsdk.State, want T) {
-	t.Helper()
-	var got T
-	if diags := state.Get(ctx, &got); diags.HasError() {
-		t.Fatalf("unexpected state unpack error: %v", diags)
-	}
-	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("state mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -512,3 +425,110 @@ func TestGetGHClient(t *testing.T) {
 		})
 	}
 }
+
+func TestParseCompositeID(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name          string
+		id            string
+		wantTargetOrg string
+		wantInstID    int64
+		wantInstIDStr string
+		wantErrSubstr string
+	}{
+		{
+			name:          "valid_composite_id",
+			id:            "test-org/12345678",
+			wantTargetOrg: "test-org",
+			wantInstID:    12345678,
+			wantInstIDStr: "12345678",
+			wantErrSubstr: "",
+		},
+		{
+			name:          "valid_composite_id_with_special_chars_in_org",
+			id:            "org_name-with.dots/999",
+			wantTargetOrg: "org_name-with.dots",
+			wantInstID:    999,
+			wantInstIDStr: "999",
+			wantErrSubstr: "",
+		},
+		{
+			name:          "missing_slash",
+			id:            "test-org-12345678",
+			wantTargetOrg: "",
+			wantInstID:    0,
+			wantInstIDStr: "",
+			wantErrSubstr: "ID must be in the format <target_org>/<installation_id>",
+		},
+		{
+			name:          "too_many_slashes",
+			id:            "test-org/12345678/extra",
+			wantTargetOrg: "",
+			wantInstID:    0,
+			wantInstIDStr: "",
+			wantErrSubstr: "ID must be in the format <target_org>/<installation_id>",
+		},
+		{
+			name:          "empty_target_org",
+			id:            "/12345678",
+			wantTargetOrg: "",
+			wantInstID:    0,
+			wantInstIDStr: "",
+			wantErrSubstr: "ID must be in the format <target_org>/<installation_id>",
+		},
+		{
+			name:          "empty_installation_id",
+			id:            "test-org/",
+			wantTargetOrg: "",
+			wantInstID:    0,
+			wantInstIDStr: "",
+			wantErrSubstr: "ID must be in the format <target_org>/<installation_id>",
+		},
+		{
+			name:          "empty_id",
+			id:            "",
+			wantTargetOrg: "",
+			wantInstID:    0,
+			wantInstIDStr: "",
+			wantErrSubstr: "ID must be in the format <target_org>/<installation_id>",
+		},
+		{
+			name:          "non_integer_installation_id",
+			id:            "test-org/not-a-number",
+			wantTargetOrg: "",
+			wantInstID:    0,
+			wantInstIDStr: "",
+			wantErrSubstr: "installation ID must be an integer",
+		},
+		{
+			name:          "overflow_installation_id",
+			id:            "test-org/999999999999999999999999999999999",
+			wantTargetOrg: "",
+			wantInstID:    0,
+			wantInstIDStr: "",
+			wantErrSubstr: "installation ID must be an integer",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			gotOrg, gotInstID, gotInstIDStr, err := parseCompositeID(tc.id)
+
+			checkDiagnostics(t, err, tc.wantErrSubstr)
+			if tc.wantErrSubstr == "" {
+				if gotOrg != tc.wantTargetOrg {
+					t.Errorf("targetOrg = %q, want %q", gotOrg, tc.wantTargetOrg)
+				}
+				if gotInstID != tc.wantInstID {
+					t.Errorf("instID = %d, want %d", gotInstID, tc.wantInstID)
+				}
+				if gotInstIDStr != tc.wantInstIDStr {
+					t.Errorf("instIDStr = %q, want %q", gotInstIDStr, tc.wantInstIDStr)
+				}
+			}
+		})
+	}
+}
+
