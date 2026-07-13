@@ -158,4 +158,3 @@ func TestFlattenInstallations(t *testing.T) {
 		})
 	}
 }
-
