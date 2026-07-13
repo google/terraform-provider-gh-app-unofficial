@@ -26,6 +26,24 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+// mockHTTPResponse returns a roundTripperFunc that yields a static HTTP status code and response body.
+func mockHTTPResponse(status int, body string) roundTripperFunc {
+	return func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: status,
+			Body:       io.NopCloser(bytes.NewBufferString(body)),
+			Header:     make(http.Header),
+		}, nil
+	}
+}
+
+// mockHTTPError returns a roundTripperFunc that immediately fails with the given error message.
+func mockHTTPError(errStr string) roundTripperFunc {
+	return func(req *http.Request) (*http.Response, error) {
+		return nil, errors.New(errStr)
+	}
+}
+
 func diffErrString(errOrDiags any, wantErr string) string {
 	if diags, ok := errOrDiags.(diag.Diagnostics); ok {
 		if wantErr == "" {
@@ -443,23 +461,14 @@ func TestGetSelectedRepositories(t *testing.T) {
 		{
 			name:      "selected_success_200",
 			selection: "selected",
-			rt: func(req *http.Request) (*http.Response, error) {
-				body := `[{"name":"repo1"},{"name":"repo2"}]`
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewBufferString(body)),
-					Header:     make(http.Header),
-				}, nil
-			},
+			rt:        mockHTTPResponse(http.StatusOK, `[{"name":"repo1"},{"name":"repo2"}]`),
 			wantCount: 2,
 			wantErr:   "",
 		},
 		{
 			name:      "selected_error_500",
 			selection: "selected",
-			rt: func(req *http.Request) (*http.Response, error) {
-				return nil, errors.New("network timeout")
-			},
+			rt:        mockHTTPError("network timeout"),
 			wantCount: 0,
 			wantErr:   "Could not list repositories",
 		},

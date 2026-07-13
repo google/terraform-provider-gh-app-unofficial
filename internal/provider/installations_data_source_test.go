@@ -1,10 +1,8 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -24,17 +22,10 @@ func TestFlattenInstallations(t *testing.T) {
 	ctx := context.Background()
 
 	mockHTTPClient := &http.Client{
-		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-			respBody := `[
+		Transport: mockHTTPResponse(http.StatusOK, `[
 				{"id": 1, "name": "repo-alpha"},
 				{"id": 2, "name": "repo-beta"}
-			]`
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(bytes.NewBufferString(respBody)),
-				Header:     make(http.Header),
-			}, nil
-		}),
+			]`),
 	}
 	mockGHClient, _ := github.NewClient(github.WithHTTPClient(mockHTTPClient))
 
@@ -132,9 +123,7 @@ func TestFlattenInstallations(t *testing.T) {
 					UpdatedAt:           &github.Timestamp{Time: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)},
 				},
 			},
-			rt: func(req *http.Request) (*http.Response, error) {
-				return nil, errors.New("list repos failure")
-			},
+			rt:      mockHTTPError("list repos failure"),
 			want:    nil,
 			wantErr: "Could not list repositories",
 		},
@@ -231,15 +220,8 @@ func TestInstallationsDataSource_Unit_Read(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "read_success_200",
-			rt: func(req *http.Request) (*http.Response, error) {
-				body := `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewBufferString(body)),
-					Header:     make(http.Header),
-				}, nil
-			},
+			name:    "read_success_200",
+			rt:      mockHTTPResponse(http.StatusOK, `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`),
 			want: installation{
 				TargetOrg: types.StringValue("test-org"),
 				Installations: []app{
@@ -259,10 +241,8 @@ func TestInstallationsDataSource_Unit_Read(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "read_error_500",
-			rt: func(req *http.Request) (*http.Response, error) {
-				return nil, errors.New("list failure")
-			},
+			name:    "read_error_500",
+			rt:      mockHTTPError("list failure"),
 			wantErr: "Failed to list installations",
 		},
 		{
@@ -271,12 +251,7 @@ func TestInstallationsDataSource_Unit_Read(t *testing.T) {
 				if strings.Contains(req.URL.Path, "repositories") {
 					return nil, errors.New("list repos failure during read")
 				}
-				body := `[{"id": 12345, "app_slug": "test-app", "repository_selection": "selected", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewBufferString(body)),
-					Header:     make(http.Header),
-				}, nil
+				return mockHTTPResponse(http.StatusOK, `[{"id": 12345, "app_slug": "test-app", "repository_selection": "selected", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`).RoundTrip(req)
 			},
 			wantErr: "Could not list repositories",
 		},

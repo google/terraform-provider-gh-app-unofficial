@@ -1,10 +1,7 @@
 package provider
 
 import (
-	"bytes"
 	"context"
-	"errors"
-	"io"
 	"net/http"
 	"testing"
 
@@ -189,22 +186,13 @@ func TestInstallationResource_Unit_Create(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "create_success_200",
-			rt: func(req *http.Request) (*http.Response, error) {
-				body := `{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}`
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewBufferString(body)),
-					Header:     make(http.Header),
-				}, nil
-			},
+			name:    "create_success_200",
+			rt:      mockHTTPResponse(http.StatusOK, `{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}`),
 			wantErr: "",
 		},
 		{
-			name: "create_error_500",
-			rt: func(req *http.Request) (*http.Response, error) {
-				return nil, errors.New("API error")
-			},
+			name:    "create_error_500",
+			rt:      mockHTTPError("API error"),
 			wantErr: "Failed to install app",
 		},
 	}
@@ -238,34 +226,18 @@ func TestInstallationResource_Unit_Read(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "read_success_200",
-			rt: func(req *http.Request) (*http.Response, error) {
-				body := `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewBufferString(body)),
-					Header:     make(http.Header),
-				}, nil
-			},
+			name:    "read_success_200",
+			rt:      mockHTTPResponse(http.StatusOK, `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`),
 			wantErr: "",
 		},
 		{
-			name: "read_not_found_removes_resource",
-			rt: func(req *http.Request) (*http.Response, error) {
-				body := `[]`
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewBufferString(body)),
-					Header:     make(http.Header),
-				}, nil
-			},
+			name:    "read_not_found_removes_resource",
+			rt:      mockHTTPResponse(http.StatusOK, `[]`),
 			wantErr: "",
 		},
 		{
-			name: "read_error_500",
-			rt: func(req *http.Request) (*http.Response, error) {
-				return nil, errors.New("network failure")
-			},
+			name:    "read_error_500",
+			rt:      mockHTTPError("network failure"),
 			wantErr: "Error Reading GitHub App Installations",
 		},
 	}
@@ -301,33 +273,18 @@ func TestInstallationResource_Unit_Update(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "update_success_200",
-			rt: func(req *http.Request) (*http.Response, error) {
-				body := `{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}`
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewBufferString(body)),
-					Header:     make(http.Header),
-				}, nil
-			},
+			name:    "update_success_200",
+			rt:      mockHTTPResponse(http.StatusOK, `{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}`),
 			wantErr: "",
 		},
 		{
-			name: "update_error_500",
-			rt: func(req *http.Request) (*http.Response, error) {
-				return nil, errors.New("update error")
-			},
+			name:    "update_error_500",
+			rt:      mockHTTPError("update error"),
 			wantErr: "Failed to update app installation repositories",
 		},
 		{
-			name: "update_nil_installation",
-			rt: func(req *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewBufferString("null")),
-					Header:     make(http.Header),
-				}, nil
-			},
+			name:    "update_nil_installation",
+			rt:      mockHTTPResponse(http.StatusOK, "null"),
 			wantErr: "Installation not found",
 		},
 		{
@@ -374,21 +331,13 @@ func TestInstallationResource_Unit_Delete(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "delete_success_204",
-			rt: func(req *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode: http.StatusNoContent,
-					Body:       io.NopCloser(bytes.NewBufferString("")),
-					Header:     make(http.Header),
-				}, nil
-			},
+			name:    "delete_success_204",
+			rt:      mockHTTPResponse(http.StatusNoContent, ""),
 			wantErr: "",
 		},
 		{
-			name: "delete_error_500",
-			rt: func(req *http.Request) (*http.Response, error) {
-				return nil, errors.New("uninstall failure")
-			},
+			name:    "delete_error_500",
+			rt:      mockHTTPError("uninstall failure"),
 			wantErr: "Failed to uninstall app",
 		},
 		{
@@ -459,14 +408,7 @@ func TestInstallationResource_Unit_Import(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
-			var rt roundTripperFunc = func(req *http.Request) (*http.Response, error) {
-				body := `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewBufferString(body)),
-					Header:     make(http.Header),
-				}, nil
-			}
+			var rt roundTripperFunc = mockHTTPResponse(http.StatusOK, `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`)
 			r := &installationResource{client: newTestGHClient(rt)}
 
 			var schemaResp resource.SchemaResponse
