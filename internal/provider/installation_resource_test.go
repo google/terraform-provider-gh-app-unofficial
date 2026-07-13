@@ -429,29 +429,29 @@ func TestInstallationResource_Unit_Import(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name    string
-		id      string
-		wantErr string
+		name        string
+		id          string
+		wantReadErr string
 	}{
 		{
-			name:    "import_success",
-			id:      "test-org/12345",
-			wantErr: "",
+			name:        "import_success",
+			id:          "test-org/12345",
+			wantReadErr: "",
 		},
 		{
-			name:    "import_invalid_id",
-			id:      "not-an-integer",
-			wantErr: "Unexpected Import Identifier",
+			name:        "import_invalid_id",
+			id:          "not-an-integer",
+			wantReadErr: "Unexpected Identifier",
 		},
 		{
-			name:    "import_invalid_format",
-			id:      "test-org/not-an-integer",
-			wantErr: "Unexpected Import Identifier",
+			name:        "import_invalid_format",
+			id:          "test-org/not-an-integer",
+			wantReadErr: "Unexpected Identifier",
 		},
 		{
-			name:    "import_invalid_flipped",
-			id:      "12456/test-org",
-			wantErr: "Unexpected Import Identifier",
+			name:        "import_invalid_flipped",
+			id:          "12456/test-org",
+			wantReadErr: "Unexpected Identifier",
 		},
 	}
 
@@ -459,12 +459,19 @@ func TestInstallationResource_Unit_Import(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
-			r := &installationResource{}
+			var rt roundTripperFunc = func(req *http.Request) (*http.Response, error) {
+				body := `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewBufferString(body)),
+					Header:     make(http.Header),
+				}, nil
+			}
+			r := &installationResource{client: newTestGHClient(rt)}
 
 			var schemaResp resource.SchemaResponse
 			r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 
-			// Import starts with an empty/unpopulated state object in Terraform before ImportState populates attributes.
 			model := newTestResourceModel("", "", "", "", nil)
 			state := newTestState(t, ctx, schemaResp.Schema, model)
 
@@ -474,8 +481,13 @@ func TestInstallationResource_Unit_Import(t *testing.T) {
 			resp := &resource.ImportStateResponse{State: state}
 
 			r.ImportState(ctx, req, resp)
+			checkDiagnostics(t, resp.Diagnostics, "")
 
-			checkDiagnostics(t, resp.Diagnostics, tc.wantErr)
+			readReq := resource.ReadRequest{State: resp.State}
+			readResp := &resource.ReadResponse{State: resp.State}
+			r.Read(ctx, readReq, readResp)
+
+			checkDiagnostics(t, readResp.Diagnostics, tc.wantReadErr)
 		})
 	}
 }
