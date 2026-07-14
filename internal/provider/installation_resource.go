@@ -38,7 +38,7 @@ type installationResourceModel struct {
 	TargetOrg            types.String `tfsdk:"target_org"`
 	ClientID             types.String `tfsdk:"client_id"`
 	AppSlug              types.String `tfsdk:"app_slug"`
-	SelectedRepositories types.List   `tfsdk:"selected_repositories"`
+	SelectedRepositories types.Set    `tfsdk:"selected_repositories"`
 	RepositorySelection  types.String `tfsdk:"repository_selection"`
 	Events               types.List   `tfsdk:"events"`
 	Permissions          types.Map    `tfsdk:"permissions"`
@@ -90,7 +90,7 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"selected_repositories": schema.ListAttribute{
+			"selected_repositories": schema.SetAttribute{
 				MarkdownDescription: "The list of repository names the installation has access to. Only valid and required when repository_selection is set to 'selected'.",
 				Optional:            true,
 				ElementType:         types.StringType,
@@ -204,7 +204,7 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	targetOrg := plan.TargetOrg.ValueString()
 
 	// Slice of strings of repositories to install app in
-	selectedRepos := listToStringSlice(ctx, plan.SelectedRepositories, &resp.Diagnostics)
+	selectedRepos := setToStringSlice(ctx, plan.SelectedRepositories, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -355,7 +355,7 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 	client := r.client.Client
 	enterpriseSlug := r.client.EnterpriseSlug
 
-	selectedRepos := listToStringSlice(ctx, plan.SelectedRepositories, &resp.Diagnostics)
+	selectedRepos := setToStringSlice(ctx, plan.SelectedRepositories, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

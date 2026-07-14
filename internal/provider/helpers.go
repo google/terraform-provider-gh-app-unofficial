@@ -45,10 +45,10 @@ func flattenPermissions(ctx context.Context, permissions *github.InstallationPer
 }
 
 // getSelectedRepositories lists repositories for an org app installation when selection is "selected",
-// returning their names as a Terraform types.List. If selection is not "selected", it returns a null list.
-func getSelectedRepositories(ctx context.Context, client *github.Client, enterpriseSlug, targetOrg string, installationID int64, selection string, diags *diag.Diagnostics) types.List {
+// returning their names as a Terraform types.Set. If selection is not "selected", it returns a null set.
+func getSelectedRepositories(ctx context.Context, client *github.Client, enterpriseSlug, targetOrg string, installationID int64, selection string, diags *diag.Diagnostics) types.Set {
 	if selection != "selected" {
-		return types.ListNull(types.StringType)
+		return types.SetNull(types.StringType)
 	}
 
 	repos, _, err := client.Enterprise.ListRepositoriesForOrgAppInstallation(ctx, enterpriseSlug, targetOrg, installationID, nil)
@@ -63,7 +63,7 @@ func getSelectedRepositories(ctx context.Context, client *github.Client, enterpr
 			"Error Reading GitHub App Installation Repositories",
 			fmt.Sprintf("Could not list repositories: %s", err.Error()),
 		)
-		return types.ListNull(types.StringType)
+		return types.SetNull(types.StringType)
 	}
 
 	var repoNames []string
@@ -71,7 +71,7 @@ func getSelectedRepositories(ctx context.Context, client *github.Client, enterpr
 		repoNames = append(repoNames, repo.GetName())
 	}
 
-	selectedReposVal, errDiags := types.ListValueFrom(ctx, types.StringType, repoNames)
+	selectedReposVal, errDiags := types.SetValueFrom(ctx, types.StringType, repoNames)
 	diags.Append(errDiags...)
 	return selectedReposVal
 }
@@ -81,11 +81,11 @@ func isKnown(val attr.Value) bool {
 	return val != nil && !val.IsNull() && !val.IsUnknown()
 }
 
-// listToStringSlice converts a Terraform types.List of strings into a Go []string slice.
-func listToStringSlice(ctx context.Context, list types.List, diags *diag.Diagnostics) []string {
+// setToStringSlice converts a Terraform types.Set of strings into a Go []string slice.
+func setToStringSlice(ctx context.Context, set types.Set, diags *diag.Diagnostics) []string {
 	var elements []string
-	if isKnown(list) {
-		errDiags := list.ElementsAs(ctx, &elements, false)
+	if isKnown(set) {
+		errDiags := set.ElementsAs(ctx, &elements, false)
 		diags.Append(errDiags...)
 	}
 	return elements
