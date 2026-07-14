@@ -68,11 +68,11 @@ func diffErrString(errOrDiags any, wantErr string) string {
 	return fmt.Sprintf("unsupported type for diffErrString: %T", errOrDiags)
 }
 
-// checkDiagnostics asserts that diags (diag.Diagnostics) or err (error) contains (or doesn't contain) the expected error substring.
-func checkDiagnostics(t *testing.T, errOrDiags any, wantErr string) {
+// checkErrorOrDiags accepts diag.Diagnostics or error and validates contains wantErr substring. If wantErr is blank ensures that there are no errors.
+func checkErrorOrDiags(t *testing.T, errOrDiags any, wantErr string) {
 	t.Helper()
 	if diff := diffErrString(errOrDiags, wantErr); diff != "" {
-		t.Error(diff)
+		t.Fatal(diff)
 	}
 }
 
@@ -173,7 +173,7 @@ func TestFormatBaseURL(t *testing.T) {
 			t.Parallel()
 			var diags diag.Diagnostics
 			got := formatBaseURL(tc.rawURL, &diags)
-			checkDiagnostics(t, diags, tc.wantErr)
+			checkErrorOrDiags(t, diags, tc.wantErr)
 			if tc.wantErr == "" && got != tc.want {
 				t.Errorf("formatBaseURL(%q) = %q, want %q", tc.rawURL, got, tc.want)
 			}
@@ -221,9 +221,9 @@ func TestSetToStringSlice(t *testing.T) {
 			var diags diag.Diagnostics
 
 			got := setToStringSlice(ctx, tc.set, &diags)
-			if diags.HasError() {
-				t.Fatalf("unexpected diagnostics: %v", diags)
-			}
+
+			checkErrorOrDiags(t, diags, "")
+
 			sort.Strings(got)
 			sort.Strings(tc.want)
 			if diff := cmp.Diff(tc.want, got); diff != "" {
@@ -304,7 +304,7 @@ func TestFlattenPermissions(t *testing.T) {
 
 			got := flattenPermissions(ctx, tc.permissions, &diags)
 
-			checkDiagnostics(t, diags, tc.wantErr)
+			checkErrorOrDiags(t, diags, tc.wantErr)
 
 			if tc.wantErr == "" && tc.permissions != nil {
 				if got.IsNull() || got.IsUnknown() {
@@ -368,8 +368,7 @@ func TestGetSelectedRepositories(t *testing.T) {
 
 			got := getSelectedRepositories(ctx, client, "test-ent", "test-org", 123, tc.selection, &diags)
 
-			checkDiagnostics(t, diags, tc.wantErr)
-
+			checkErrorOrDiags(t, diags, tc.wantErr)
 			if tc.wantErr == "" && tc.selection == "selected" {
 				if got.IsNull() || got.IsUnknown() {
 					t.Fatalf("expected known list, got %v", got)
@@ -421,7 +420,7 @@ func TestGetGHClient(t *testing.T) {
 
 			got := getGHClient(ctx, tc.providerData, &diags)
 
-			checkDiagnostics(t, diags, tc.wantErr)
+			checkErrorOrDiags(t, diags, tc.wantErr)
 			if got != tc.wantClient {
 				t.Errorf("getGHClient() = %v, want %v", got, tc.wantClient)
 			}
@@ -438,7 +437,7 @@ func TestParseCompositeID(t *testing.T) {
 		wantTargetOrg string
 		wantInstID    int64
 		wantInstIDStr string
-		wantErrSubstr string
+		wantErr       string
 	}{
 		{
 			name:          "valid_composite_id",
@@ -446,7 +445,7 @@ func TestParseCompositeID(t *testing.T) {
 			wantTargetOrg: "test-org",
 			wantInstID:    12345678,
 			wantInstIDStr: "12345678",
-			wantErrSubstr: "",
+			wantErr:       "",
 		},
 		{
 			name:          "valid_composite_id_with_special_chars_in_org",
@@ -454,7 +453,7 @@ func TestParseCompositeID(t *testing.T) {
 			wantTargetOrg: "org_name-with.dots",
 			wantInstID:    999,
 			wantInstIDStr: "999",
-			wantErrSubstr: "",
+			wantErr:       "",
 		},
 		{
 			name:          "missing_slash",
@@ -462,7 +461,7 @@ func TestParseCompositeID(t *testing.T) {
 			wantTargetOrg: "",
 			wantInstID:    0,
 			wantInstIDStr: "",
-			wantErrSubstr: "ID must be in the format <target_org>/<installation_id>",
+			wantErr:       "ID must be in the format <target_org>/<installation_id>",
 		},
 		{
 			name:          "too_many_slashes",
@@ -470,7 +469,7 @@ func TestParseCompositeID(t *testing.T) {
 			wantTargetOrg: "",
 			wantInstID:    0,
 			wantInstIDStr: "",
-			wantErrSubstr: "ID must be in the format <target_org>/<installation_id>",
+			wantErr:       "ID must be in the format <target_org>/<installation_id>",
 		},
 		{
 			name:          "empty_target_org",
@@ -478,7 +477,7 @@ func TestParseCompositeID(t *testing.T) {
 			wantTargetOrg: "",
 			wantInstID:    0,
 			wantInstIDStr: "",
-			wantErrSubstr: "ID must be in the format <target_org>/<installation_id>",
+			wantErr:       "ID must be in the format <target_org>/<installation_id>",
 		},
 		{
 			name:          "empty_installation_id",
@@ -486,7 +485,7 @@ func TestParseCompositeID(t *testing.T) {
 			wantTargetOrg: "",
 			wantInstID:    0,
 			wantInstIDStr: "",
-			wantErrSubstr: "ID must be in the format <target_org>/<installation_id>",
+			wantErr:       "ID must be in the format <target_org>/<installation_id>",
 		},
 		{
 			name:          "empty_id",
@@ -494,7 +493,7 @@ func TestParseCompositeID(t *testing.T) {
 			wantTargetOrg: "",
 			wantInstID:    0,
 			wantInstIDStr: "",
-			wantErrSubstr: "ID must be in the format <target_org>/<installation_id>",
+			wantErr:       "ID must be in the format <target_org>/<installation_id>",
 		},
 		{
 			name:          "non_integer_installation_id",
@@ -502,7 +501,7 @@ func TestParseCompositeID(t *testing.T) {
 			wantTargetOrg: "",
 			wantInstID:    0,
 			wantInstIDStr: "",
-			wantErrSubstr: "installation ID must be an integer",
+			wantErr:       "installation ID must be an integer",
 		},
 		{
 			name:          "overflow_installation_id",
@@ -510,7 +509,23 @@ func TestParseCompositeID(t *testing.T) {
 			wantTargetOrg: "",
 			wantInstID:    0,
 			wantInstIDStr: "",
-			wantErrSubstr: "installation ID must be an integer",
+			wantErr:       "installation ID must be an integer",
+		},
+		{
+			name:          "negative_installation_id",
+			id:            "test-org/-1",
+			wantTargetOrg: "test-org",
+			wantInstID:    -1,
+			wantInstIDStr: "-1",
+			wantErr:       "",
+		},
+		{
+			name:          "zero_installation_id",
+			id:            "test-org/0",
+			wantTargetOrg: "test-org",
+			wantInstID:    0,
+			wantInstIDStr: "0",
+			wantErr:       "",
 		},
 	}
 
@@ -519,8 +534,8 @@ func TestParseCompositeID(t *testing.T) {
 			t.Parallel()
 			gotOrg, gotInstID, gotInstIDStr, err := parseCompositeID(tc.id)
 
-			checkDiagnostics(t, err, tc.wantErrSubstr)
-			if tc.wantErrSubstr == "" {
+			checkErrorOrDiags(t, err, tc.wantErr)
+			if tc.wantErr == "" {
 				if gotOrg != tc.wantTargetOrg {
 					t.Errorf("targetOrg = %q, want %q", gotOrg, tc.wantTargetOrg)
 				}

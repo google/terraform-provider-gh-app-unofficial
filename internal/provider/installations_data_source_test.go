@@ -156,11 +156,9 @@ func TestFlattenInstallations(t *testing.T) {
 
 			got := flattenInstallations(ctx, client, "test-ent", "test-org", tc.input, &diags)
 
-			checkDiagnostics(t, diags, tc.wantErr)
-			if tc.wantErr == "" {
-				if diff := cmp.Diff(tc.want, got); diff != "" {
-					t.Errorf("flattenInstallations() mismatch (-want +got):\n%s", diff)
-				}
+			checkErrorOrDiags(t, diags, tc.wantErr)
+			if diff := cmp.Diff(tc.want, got); tc.wantErr == "" && diff != "" {
+				t.Errorf("flattenInstallations() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
