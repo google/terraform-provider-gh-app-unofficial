@@ -309,8 +309,11 @@ func TestFlattenPermissions(t *testing.T) {
 				return
 			}
 
-			if tc.permissions == nil && !got.IsNull() {
-				t.Errorf("expected null map for nil permissions, got %v", got)
+			if tc.permissions == nil {
+				if !got.IsNull() {
+					t.Errorf("expected null map for nil permissions, got %v", got)
+				}
+				return
 			}
 
 			if got.IsNull() || got.IsUnknown() {
