@@ -305,11 +305,16 @@ func TestFlattenPermissions(t *testing.T) {
 			got := flattenPermissions(ctx, tc.permissions, &diags)
 
 			checkErrorOrDiags(t, diags, tc.wantErr)
+			if tc.wantErr != "" {
+				return
+			}
 
-			if tc.wantErr == "" && tc.permissions != nil {
-				if got.IsNull() || got.IsUnknown() {
-					t.Errorf("expected known map, got %v", got)
-				}
+			if tc.permissions == nil && !got.IsNull() {
+				t.Errorf("expected null map for nil permissions, got %v", got)
+			}
+
+			if got.IsNull() || got.IsUnknown() {
+				t.Errorf("expected known map, got %v", got)
 			}
 		})
 	}
