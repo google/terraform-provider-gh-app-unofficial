@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"testing"
 
@@ -180,35 +181,35 @@ func TestFormatBaseURL(t *testing.T) {
 	}
 }
 
-func TestListToStringSlice(t *testing.T) {
+func TestSetToStringSlice(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name string
-		list types.List
+		set  types.Set
 		want []string
 	}{
 		{
-			name: "known_list_with_elements",
-			list: types.ListValueMust(types.StringType, []attr.Value{
+			name: "known_set_with_elements",
+			set: types.SetValueMust(types.StringType, []attr.Value{
 				types.StringValue("repo1"),
 				types.StringValue("repo2"),
 			}),
 			want: []string{"repo1", "repo2"},
 		},
 		{
-			name: "empty_known_list",
-			list: types.ListValueMust(types.StringType, []attr.Value{}),
+			name: "empty_known_set",
+			set:  types.SetValueMust(types.StringType, []attr.Value{}),
 			want: []string{},
 		},
 		{
-			name: "null_list",
-			list: types.ListNull(types.StringType),
+			name: "null_set",
+			set:  types.SetNull(types.StringType),
 			want: nil,
 		},
 		{
-			name: "unknown_list",
-			list: types.ListUnknown(types.StringType),
+			name: "unknown_set",
+			set:  types.SetUnknown(types.StringType),
 			want: nil,
 		},
 	}
@@ -219,12 +220,14 @@ func TestListToStringSlice(t *testing.T) {
 			ctx := context.Background()
 			var diags diag.Diagnostics
 
-			got := listToStringSlice(ctx, tc.list, &diags)
+			got := setToStringSlice(ctx, tc.set, &diags)
 			if diags.HasError() {
 				t.Fatalf("unexpected diagnostics: %v", diags)
 			}
+			sort.Strings(got)
+			sort.Strings(tc.want)
 			if diff := cmp.Diff(tc.want, got); diff != "" {
-				t.Errorf("listToStringSlice() mismatch (-want +got):\n%s", diff)
+				t.Errorf("setToStringSlice() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

@@ -45,6 +45,13 @@ func TestFlattenInstallations(t *testing.T) {
 		}
 		return types.ListValueMust(types.StringType, vals)
 	}
+	reposMust := func(s []string) types.Set {
+		var vals []attr.Value
+		for _, v := range s {
+			vals = append(vals, types.StringValue(v))
+		}
+		return types.SetValueMust(types.StringType, vals)
+	}
 
 	cases := []struct {
 		name    string
@@ -80,7 +87,7 @@ func TestFlattenInstallations(t *testing.T) {
 					ID:                   types.StringValue("11111"),
 					ClientID:             types.StringValue("mock-client-id-abc"),
 					AppSlug:              types.StringValue("test-app"),
-					SelectedRepositories: types.ListNull(types.StringType),
+					SelectedRepositories: types.SetNull(types.StringType),
 					RepositorySelection:  types.StringValue("all"),
 					Permissions:          permsMust(map[string]attr.Value{"actions": types.StringValue("write")}),
 					Events:               eventsMust([]string{"push", "pull_request"}),
@@ -107,7 +114,7 @@ func TestFlattenInstallations(t *testing.T) {
 					ID:                   types.StringValue("22222"),
 					ClientID:             types.StringValue("mock-client-id-xyz"),
 					AppSlug:              types.StringValue("selected-app"),
-					SelectedRepositories: eventsMust([]string{"repo-alpha", "repo-beta"}),
+					SelectedRepositories: reposMust([]string{"repo-alpha", "repo-beta"}),
 					RepositorySelection:  types.StringValue("selected"),
 					Permissions:          types.MapNull(types.StringType),
 					Events:               types.ListNull(types.StringType),
