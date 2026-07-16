@@ -33,7 +33,7 @@ type app struct {
 	ID                   types.String `tfsdk:"id"` // This is the installation ID of the app
 	ClientID             types.String `tfsdk:"client_id"`
 	AppSlug              types.String `tfsdk:"app_slug"`
-	SelectedRepositories types.List   `tfsdk:"selected_repositories"`
+	SelectedRepositories types.Set    `tfsdk:"selected_repositories"`
 	RepositorySelection  types.String `tfsdk:"repository_selection"`
 	Events               types.List   `tfsdk:"events"`      // []String
 	Permissions          types.Map    `tfsdk:"permissions"` // map[string]String
@@ -72,7 +72,7 @@ func (d *installationsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 							MarkdownDescription: "The slug of the app.",
 							Computed:            true,
 						},
-						"selected_repositories": schema.ListAttribute{
+						"selected_repositories": schema.SetAttribute{
 							MarkdownDescription: "The list of repository names the installation has access to.",
 							Computed:            true,
 							ElementType:         types.StringType,

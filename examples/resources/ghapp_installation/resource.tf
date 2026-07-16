@@ -29,7 +29,7 @@ variable "repository_selection" {
   default     = "all"
 }
 variable "selected_repositories" {
-  type        = list(string)
+  type        = set(string)
   description = "The list of repository names the installation has access to. Required when repository_selection is 'selected'."
   default     = null
 }

@@ -69,5 +69,5 @@ Read-Only:
 - `id` (String) The ID of the app installation.
 - `permissions` (Map of String) The permissions for the app installation.
 - `repository_selection` (String) The type of repository selection for the app installation.
-- `selected_repositories` (List of String) The list of repository names the installation has access to.
+- `selected_repositories` (Set of String) The list of repository names the installation has access to.
 - `updated_at` (String) The update timestamp of the app installation.
