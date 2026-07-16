@@ -47,4 +47,5 @@ terraform.rc
 *.tfvars.json
 .terraform.tfstate.lock.info
 
-
+# Test artifacts
+coverage.out
