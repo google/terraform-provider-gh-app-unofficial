@@ -9,8 +9,26 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 )
+
+// testAccProtoV6ProviderFactories is used to instantiate a provider during acceptance testing.
+var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
+	"ghapp": providerserver.NewProtocol6WithError(New("test")()),
+}
+
+func testAccPreCheck(t *testing.T) {
+	// You can add code here to run prior to any test case execution, for example assertions
+	// about the appropriate environment variables being set are common to see in a pre-check
+	// function.
+}
+
+func TestProvider(t *testing.T) {
+	_ = testAccProtoV6ProviderFactories
+	testAccPreCheck(t)
+}
 
 func TestProvider_Unit_Configure(t *testing.T) {
 	cases := []struct {
@@ -98,7 +116,7 @@ func TestProvider_Unit_Configure(t *testing.T) {
 
 			p.Configure(ctx, req, resp)
 
-			checkDiagnostics(t, resp.Diagnostics, tc.wantErr)
+			checkErrorOrDiags(t, resp.Diagnostics, tc.wantErr)
 		})
 	}
 }

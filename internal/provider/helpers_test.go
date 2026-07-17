@@ -80,11 +80,6 @@ func checkErrorOrDiags(t *testing.T, errOrDiags any, wantErr string) {
 	}
 }
 
-// checkDiagnostics is an alias for checkErrorOrDiags for backwards compatibility across tests.
-func checkDiagnostics(t *testing.T, errOrDiags any, wantErr string) {
-	t.Helper()
-	checkErrorOrDiags(t, errOrDiags, wantErr)
-}
 
 // mockHTTPResponse returns a roundTripperFunc that yields a static HTTP status code and response body.
 func mockHTTPResponse(status int, body string) roundTripperFunc {

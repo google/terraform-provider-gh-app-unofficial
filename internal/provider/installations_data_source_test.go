@@ -211,7 +211,7 @@ func TestInstallationsDataSource_Unit_Configure(t *testing.T) {
 
 			d.Configure(ctx, datasource.ConfigureRequest{ProviderData: tc.providerData}, resp)
 
-			checkDiagnostics(t, resp.Diagnostics, tc.wantErr)
+			checkErrorOrDiags(t, resp.Diagnostics, tc.wantErr)
 			if d.client != tc.wantClient {
 				t.Errorf("Configure() client = %v, want %v", d.client, tc.wantClient)
 			}
@@ -291,7 +291,7 @@ func TestInstallationsDataSource_Unit_Read(t *testing.T) {
 
 			d.Read(ctx, datasource.ReadRequest{Config: cfg}, resp)
 
-			checkDiagnostics(t, resp.Diagnostics, tc.wantErr)
+			checkErrorOrDiags(t, resp.Diagnostics, tc.wantErr)
 			if tc.wantErr == "" {
 				checkState(t, ctx, resp.State, tc.want)
 			}
