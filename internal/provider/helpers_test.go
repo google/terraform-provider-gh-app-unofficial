@@ -68,7 +68,9 @@ func diffErrString(errOrDiags any, wantErr string) string {
 	return fmt.Sprintf("unsupported type for diffErrString: %T", errOrDiags)
 }
 
-// checkErrorOrDiags accepts diag.Diagnostics or error and validates contains wantErr substring. If wantErr is blank ensures that there are no errors.
+// checkErrorOrDiags asserts whether errOrDiags (which accepts diag.Diagnostics, error, or nil)
+// matches the expected wantErr substring in its summary, details, or error message.
+// If wantErr is empty, it asserts that no errors or error-level diagnostics occurred.
 func checkErrorOrDiags(t *testing.T, errOrDiags any, wantErr string) {
 	t.Helper()
 	if diff := diffErrString(errOrDiags, wantErr); diff != "" {
