@@ -4,6 +4,7 @@
 package provider
 
 import (
+	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -16,12 +17,17 @@ var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServe
 }
 
 func testAccPreCheck(t *testing.T) {
-	// You can add code here to run prior to any test case execution, for example assertions
-	// about the appropriate environment variables being set are common to see in a pre-check
-	// function.
+	t.Helper()
+
+	if os.Getenv("TF_ACC") == "" {
+		return
+	}
+
+	if os.Getenv("GITHUB_TOKEN") == "" || os.Getenv("GITHUB_ENTERPRISE_SLUG") == "" || os.Getenv("GITHUB_TARGET_ORG") == "" || os.Getenv("GITHUB_APP_CLIENT_ID") == "" {
+		t.Fatal("GITHUB_TOKEN, GITHUB_ENTERPRISE_SLUG, GITHUB_TARGET_ORG, and GITHUB_APP_CLIENT_ID must be set for acceptance tests.")
+	}
 }
 
 func TestProvider(t *testing.T) {
 	_ = testAccProtoV6ProviderFactories
-	testAccPreCheck(t)
 }

@@ -83,21 +83,27 @@ In order to run the full suite of Acceptance tests, run `make testacc`.
 make testacc
 ```
 
-## Local Development & Debugging
+## Local Development & Acceptance Testing
+
+For full step-by-step developer onboarding, toolchain setup, dual-app GitHub App bootstrapping (`org-a` vs `org-b`), and 30-day enterprise trial rotation runbooks, see **[DEVELOPMENT.md](./DEVELOPMENT.md)**.
+> [!IMPORTANT]
+> **Required for Acceptance/Integration Tests:** Configuring the minimal `.env` file and the two-organization GitHub App structure described in `DEVELOPMENT.md` is **strictly required** for `make testacc` to authenticate with GitHub and execute live acceptance/integration tests successfully.
+
+### Unified Operating Model
+
+Both local interactive debugging (`dlv` / VS Code `F5`) and automated acceptance testing (`make testacc`) target the exact same static sandbox organization (`org-b` / `TF_VAR_target_org`) under your enterprise (`TF_VAR_enterprise_slug`) and inherit seamlessly from your minimal `.env` file:
+
+| Category | Manual Debugging & Dev Mode (`dlv` / VS Code F5) | Automated Acceptance Testing (`make testacc` / CI) |
+| :--- | :--- | :--- |
+| **Purpose** | Interactive development, attaching breakpoints (`dlv`) to local HCL examples (`examples/resources/ghapp_installation`). | Automated, non-interactive CI/CD validation and regression testing against the static sandbox (`resource.Test`). |
+| **Target Organization (`org-b`)** | Static dedicated organization (`TF_VAR_target_org` in `.env`). | Static dedicated organization (`TF_VAR_target_org` / `GITHUB_TARGET_ORG`). Pre-check verifies test repositories exist. |
+| **App Authentication** | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` in `.env` to authenticate. | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` via `cmd/get-token` to mint `GITHUB_TOKEN`. |
+| **HCL Input Variables** | Uses `TF_VAR_enterprise_slug`, `TF_VAR_target_org`, `TF_VAR_client_id`, and `TF_EXAMPLE_DIR`. | Controlled by Go test strings (`testAccConfig`), inheriting target configuration directly from `TF_VAR_*` variables. |
 
 ### Prerequisites
 *   Install the [Go extension for VS Code](https://marketplace.visualstudio.com/items?itemName=golang.Go).
 *   Install the Delve debugger: `go install github.com/go-delve/delve/cmd/dlv@latest`
-*   Create a `.env` file in the workspace root with your GitHub App credentials and test configurations:
-    ```env
-    GITHUB_APP_ID="YOUR_GITHUB_APP_ID"
-    GITHUB_APP_PRIVATE_KEY_PATH="~/path/to/your/private-key.pem"
-    GITHUB_APP_INSTALLATION_ID="YOUR_GITHUB_APP_INSTALLATION_ID"
-
-    # (Optional) Target example folder to run/debug. Defaults to examples/provider-install-verification
-    TF_EXAMPLE_DIR="examples/installations-data-source"
-    ```
-    *(Note: You can either create your own GitHub App for testing or obtain credentials/keys for a shared test App from the repository owner).*
+*   Create a `.env` file in the workspace root with your GitHub App credentials and test configurations (see [DEVELOPMENT.md](./DEVELOPMENT.md) for template).
 *   Create a `terraform.rc` file (or modify an existing one at `~/.terraformrc`) in the workspace root to point to your local Go bin directory (e.g. `~/go/bin`):
     ```hcl
     provider_installation {

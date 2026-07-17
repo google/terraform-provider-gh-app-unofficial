@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestFlattenInstallations(t *testing.T) {
@@ -162,4 +165,49 @@ func TestFlattenInstallations(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAccInstallationsDataSource_Basic(t *testing.T) {
+	entSlug := os.Getenv("GITHUB_ENTERPRISE_SLUG")
+	targetOrg := os.Getenv("GITHUB_TARGET_ORG")
+	clientID := os.Getenv("GITHUB_APP_CLIENT_ID")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccInstallationsDataSourceConfig(entSlug, targetOrg, clientID),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("data.ghapp_installations.test", "target_org", targetOrg),
+					resource.TestCheckResourceAttrSet("data.ghapp_installations.test", "installations.#"),
+					resource.TestCheckResourceAttrSet("data.ghapp_installations.test", "installations.0.id"),
+					resource.TestCheckResourceAttrSet("data.ghapp_installations.test", "installations.0.client_id"),
+					resource.TestCheckResourceAttrSet("data.ghapp_installations.test", "installations.0.app_slug"),
+					resource.TestCheckResourceAttr("data.ghapp_installations.test", "installations.0.repository_selection", "all"),
+					resource.TestCheckResourceAttrSet("data.ghapp_installations.test", "installations.0.created_at"),
+					resource.TestCheckResourceAttrSet("data.ghapp_installations.test", "installations.0.updated_at"),
+				),
+			},
+		},
+	})
+}
+
+func testAccInstallationsDataSourceConfig(enterpriseSlug, targetOrg, clientID string) string {
+	return fmt.Sprintf(`
+provider "ghapp" {
+  enterprise_slug = %[1]q
+}
+
+resource "ghapp_installation" "test" {
+  target_org           = %[2]q
+  client_id            = %[3]q
+  repository_selection = "all"
+}
+
+data "ghapp_installations" "test" {
+  target_org = %[2]q
+  depends_on = [ghapp_installation.test]
+}
+`, enterpriseSlug, targetOrg, clientID)
 }

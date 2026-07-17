@@ -1,0 +1,284 @@
+package provider
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"regexp"
+	"testing"
+
+	"github.com/google/go-github/v88/github"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
+)
+
+func init() {
+	resource.AddTestSweepers("ghapp_installation", &resource.Sweeper{
+		Name: "ghapp_installation",
+		F: func(region string) error {
+			ctx := context.Background()
+			return sweepInstallations(ctx)
+		},
+	})
+}
+
+func TestMain(m *testing.M) {
+	resource.TestMain(m)
+}
+
+func sweepInstallations(ctx context.Context) error {
+	token := os.Getenv("GITHUB_TOKEN")
+	entSlug := os.Getenv("GITHUB_ENTERPRISE_SLUG")
+	targetOrg := os.Getenv("GITHUB_TARGET_ORG")
+	clientID := os.Getenv("GITHUB_APP_CLIENT_ID")
+
+	if token == "" || entSlug == "" || targetOrg == "" || clientID == "" {
+		return nil
+	}
+
+	client, err := github.NewClient(github.WithAuthToken(token))
+	if err != nil {
+		return fmt.Errorf("failed to create client in sweeper: %w", err)
+	}
+
+	opt := &github.ListOptions{PerPage: 100}
+	for {
+		installations, resp, err := client.Enterprise.ListAppInstallations(ctx, entSlug, targetOrg, opt)
+		if err != nil {
+			return fmt.Errorf("failed to list organization installations in sweeper: %w", err)
+		}
+
+		for _, inst := range installations {
+			if inst.ClientID != nil && *inst.ClientID == clientID && inst.ID != nil {
+				_, err := client.Enterprise.UninstallApp(ctx, entSlug, targetOrg, *inst.ID)
+				if err != nil {
+					return fmt.Errorf("failed to sweep app installation %d: %w", *inst.ID, err)
+				}
+			}
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opt.Page = resp.NextPage
+	}
+
+	return nil
+}
+
+func TestAccInstallationResource(t *testing.T) {
+	entSlug := os.Getenv("GITHUB_ENTERPRISE_SLUG")
+	targetOrg := os.Getenv("GITHUB_TARGET_ORG")
+	clientID := os.Getenv("GITHUB_APP_CLIENT_ID")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckInstallationDestroy,
+		Steps: []resource.TestStep{
+			// Step 1: Create with selected repositories ("test-repo-1")
+			{
+				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1"`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ghapp_installation.test", "target_org", targetOrg),
+					resource.TestCheckResourceAttr("ghapp_installation.test", "client_id", clientID),
+					resource.TestCheckResourceAttr("ghapp_installation.test", "repository_selection", "selected"),
+					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.#", "1"),
+					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.0", "test-repo-1"),
+					resource.TestCheckResourceAttrSet("ghapp_installation.test", "id"),
+					resource.TestCheckResourceAttrSet("ghapp_installation.test", "installation_id"),
+					resource.TestCheckResourceAttrSet("ghapp_installation.test", "created_at"),
+					resource.TestCheckResourceAttrSet("ghapp_installation.test", "updated_at"),
+				),
+			},
+			// Step 2: Idempotency Verification on Create
+			{
+				Config:   testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1"`),
+				PlanOnly: true,
+			},
+			// Step 3: Import State Verification
+			{
+				ResourceName:            "ghapp_installation.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"updated_at"},
+			},
+			// Step 4: Update - Repository Swap (to "test-repo-2")
+			{
+				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-2"`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ghapp_installation.test", "repository_selection", "selected"),
+					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.#", "1"),
+					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.0", "test-repo-2"),
+				),
+			},
+			// Step 5: Idempotency Verification on Swap
+			{
+				Config:   testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-2"`),
+				PlanOnly: true,
+			},
+			// Step 6: Update - Multi-Repository Expansion ("test-repo-1", "test-repo-2")
+			{
+				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1", "test-repo-2"`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ghapp_installation.test", "repository_selection", "selected"),
+					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.#", "2"),
+				),
+			},
+			// Step 7: Update - Toggle Selection Mode to "all"
+			{
+				Config: testAccInstallationConfig_all(entSlug, targetOrg, clientID),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ghapp_installation.test", "repository_selection", "all"),
+					resource.TestCheckNoResourceAttr("ghapp_installation.test", "selected_repositories"),
+				),
+			},
+			// Step 8: Idempotency Verification on Mode Toggle
+			{
+				Config:   testAccInstallationConfig_all(entSlug, targetOrg, clientID),
+				PlanOnly: true,
+			},
+			// Step 9: Destroy & Re-Install Verification
+			{
+				Config:  testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1"`),
+				Destroy: true,
+			},
+			{
+				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1"`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ghapp_installation.test", "repository_selection", "selected"),
+					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.#", "1"),
+					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.0", "test-repo-1"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccInstallationResource_Drift(t *testing.T) {
+	entSlug := os.Getenv("GITHUB_ENTERPRISE_SLUG")
+	targetOrg := os.Getenv("GITHUB_TARGET_ORG")
+	clientID := os.Getenv("GITHUB_APP_CLIENT_ID")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckInstallationDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1"`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.#", "1"),
+				),
+			},
+			{
+				// Out-of-band modification simulating external drift or refresh behavior
+				PreConfig: func() {
+					ctx := context.Background()
+					token := os.Getenv("GITHUB_TOKEN")
+					client, _ := github.NewClient(github.WithAuthToken(token))
+					insts, _, err := client.Enterprise.ListAppInstallations(ctx, entSlug, targetOrg, nil)
+					if err != nil {
+						t.Logf("PreConfig ListAppInstallations error: %v", err)
+						return
+					}
+					for _, inst := range insts {
+						if inst.ClientID != nil && *inst.ClientID == clientID && inst.ID != nil {
+							opts := github.UpdateAppInstallationRepositoriesRequest{
+								RepositorySelection: github.Ptr("selected"),
+								Repositories:        []string{"test-repo-1", "test-repo-2"},
+							}
+							_, _, err := client.Enterprise.UpdateAppInstallationRepositories(ctx, entSlug, targetOrg, *inst.ID, opts)
+							if err != nil {
+								t.Logf("PreConfig UpdateAppInstallationRepositories error on inst %d: %v", *inst.ID, err)
+							} else {
+								t.Logf("PreConfig successfully updated inst %d to repositories %v", *inst.ID, opts.Repositories)
+							}
+						}
+					}
+				},
+				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1"`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.#", "2"),
+				),
+				ExpectNonEmptyPlan: true,
+				PlanOnly:           true,
+			},
+		},
+	})
+}
+
+func TestAccInstallationResource_Unhappy(t *testing.T) {
+	entSlug := os.Getenv("GITHUB_ENTERPRISE_SLUG")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccInstallationConfig_selected(entSlug, "non-existent-sandbox-org-99999", "invalid-client-id-abc", `"test-repo-1"`),
+				ExpectError: regexp.MustCompile("Failed to install app|installation not found|error"),
+			},
+		},
+	})
+}
+
+func testAccCheckInstallationDestroy(s *terraform.State) error {
+	ctx := context.Background()
+	token := os.Getenv("GITHUB_TOKEN")
+	entSlug := os.Getenv("GITHUB_ENTERPRISE_SLUG")
+	targetOrg := os.Getenv("GITHUB_TARGET_ORG")
+	clientID := os.Getenv("GITHUB_APP_CLIENT_ID")
+
+	if token == "" || targetOrg == "" || clientID == "" {
+		return nil
+	}
+
+	client, _ := github.NewClient(github.WithAuthToken(token))
+	insts, _, err := client.Enterprise.ListAppInstallations(ctx, entSlug, targetOrg, nil)
+	if err != nil {
+		return fmt.Errorf("error listing installations on CheckDestroy: %w", err)
+	}
+
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "ghapp_installation" {
+			continue
+		}
+		for _, inst := range insts {
+			if inst.ClientID != nil && *inst.ClientID == clientID {
+				return fmt.Errorf("installation with client_id %s still exists after destroy", clientID)
+			}
+		}
+	}
+
+	return nil
+}
+
+func testAccInstallationConfig_selected(enterpriseSlug, targetOrg, clientID, repos string) string {
+	return fmt.Sprintf(`
+provider "ghapp" {
+  enterprise_slug = %[1]q
+}
+
+resource "ghapp_installation" "test" {
+  target_org            = %[2]q
+  client_id             = %[3]q
+  repository_selection  = "selected"
+  selected_repositories = [%[4]s]
+}
+`, enterpriseSlug, targetOrg, clientID, repos)
+}
+
+func testAccInstallationConfig_all(enterpriseSlug, targetOrg, clientID string) string {
+	return fmt.Sprintf(`
+provider "ghapp" {
+  enterprise_slug = %[1]q
+}
+
+resource "ghapp_installation" "test" {
+  target_org           = %[2]q
+  client_id            = %[3]q
+  repository_selection = "all"
+}
+`, enterpriseSlug, targetOrg, clientID)
+}
