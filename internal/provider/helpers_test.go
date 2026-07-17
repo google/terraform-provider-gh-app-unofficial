@@ -80,7 +80,6 @@ func checkErrorOrDiags(t *testing.T, errOrDiags any, wantErr string) {
 	}
 }
 
-
 // mockHTTPResponse returns a roundTripperFunc that yields a static HTTP status code and response body.
 func mockHTTPResponse(status int, body string) roundTripperFunc {
 	return func(req *http.Request) (*http.Response, error) {
