@@ -15,7 +15,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-github/v88/github"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -164,6 +166,134 @@ func TestFlattenInstallations(t *testing.T) {
 			checkErrorOrDiags(t, diags, tc.wantErr)
 			if diff := cmp.Diff(tc.want, got); tc.wantErr == "" && diff != "" {
 				t.Errorf("flattenInstallations() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestInstallationsDataSource_Unit_Configure(t *testing.T) {
+	t.Parallel()
+
+	dummyClient := &GHClient{EnterpriseSlug: "ent"}
+
+	cases := []struct {
+		name         string
+		providerData any
+		wantClient   *GHClient
+		wantErr      string
+	}{
+		{
+			name:         "nil_provider_data",
+			providerData: nil,
+			wantClient:   nil,
+			wantErr:      "",
+		},
+		{
+			name:         "valid_provider_data",
+			providerData: dummyClient,
+			wantClient:   dummyClient,
+			wantErr:      "",
+		},
+		{
+			name:         "invalid_provider_data_type",
+			providerData: "not a gh client",
+			wantClient:   nil,
+			wantErr:      "Unexpected Configure Type",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			d := &installationsDataSource{}
+			resp := &datasource.ConfigureResponse{}
+
+			d.Configure(ctx, datasource.ConfigureRequest{ProviderData: tc.providerData}, resp)
+
+			checkDiagnostics(t, resp.Diagnostics, tc.wantErr)
+			if d.client != tc.wantClient {
+				t.Errorf("Configure() client = %v, want %v", d.client, tc.wantClient)
+			}
+		})
+	}
+}
+
+// TestInstallationsDataSource_Unit_Metadata verifies that Metadata() sets the data source type name.
+func TestInstallationsDataSource_Unit_Metadata(t *testing.T) {
+	t.Parallel()
+	d := &installationsDataSource{}
+	var resp datasource.MetadataResponse
+	d.Metadata(context.Background(), datasource.MetadataRequest{ProviderTypeName: "ghapp"}, &resp)
+	if got, want := resp.TypeName, "ghapp_installations"; got != want {
+		t.Errorf("Metadata() TypeName = %q, want %q", got, want)
+	}
+}
+
+func TestInstallationsDataSource_Unit_Read(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		rt      roundTripperFunc
+		want    installation
+		wantErr string
+	}{
+		{
+			name: "read_success_200",
+			rt:   mockHTTPResponse(http.StatusOK, `[{"id": 12345, "app_slug": "test-app", "repository_selection": "all", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`),
+			want: installation{
+				TargetOrg: types.StringValue("test-org"),
+				Installations: []app{
+					{
+						ID:                   types.StringValue("12345"),
+						ClientID:             types.StringValue(""),
+						AppSlug:              types.StringValue("test-app"),
+						SelectedRepositories: types.SetNull(types.StringType),
+						RepositorySelection:  types.StringValue("all"),
+						Permissions:          types.MapNull(types.StringType),
+						Events:               types.ListNull(types.StringType),
+						CreatedAt:            types.StringValue("2026-07-01T20:00:00Z"),
+						UpdatedAt:            types.StringValue("2026-07-01T20:00:00Z"),
+					},
+				},
+			},
+			wantErr: "",
+		},
+		{
+			name:    "read_error_500",
+			rt:      mockHTTPError("list failure"),
+			wantErr: "Failed to list installations",
+		},
+		{
+			name: "read_flatten_installations_error",
+			rt: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.Path, "repositories") {
+					return nil, errors.New("list repos failure during read")
+				}
+				return mockHTTPResponse(http.StatusOK, `[{"id": 12345, "app_slug": "test-app", "repository_selection": "selected", "created_at": "2026-07-01T20:00:00Z", "updated_at": "2026-07-01T20:00:00Z"}]`).RoundTrip(req)
+			},
+			wantErr: "Could not list repositories",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			d := &installationsDataSource{client: newTestGHClient(tc.rt)}
+
+			var schemaResp datasource.SchemaResponse
+			d.Schema(ctx, datasource.SchemaRequest{}, &schemaResp)
+
+			cfg := newTestConfig(t, ctx, schemaResp.Schema, installation{TargetOrg: types.StringValue("test-org")})
+			resp := &datasource.ReadResponse{State: tfsdk.State{Schema: schemaResp.Schema}}
+
+			d.Read(ctx, datasource.ReadRequest{Config: cfg}, resp)
+
+			checkDiagnostics(t, resp.Diagnostics, tc.wantErr)
+			if tc.wantErr == "" {
+				checkState(t, ctx, resp.State, tc.want)
 			}
 		})
 	}
