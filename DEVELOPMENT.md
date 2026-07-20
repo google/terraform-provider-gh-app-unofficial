@@ -106,7 +106,7 @@ Both local interactive debugging (`dlv` / VS Code `F5`) and automated acceptance
 | Category | Manual Debugging & Dev Mode (`dlv` / VS Code F5) | Automated Acceptance Testing (`make testacc` / CI) |
 | :--- | :--- | :--- |
 | **Purpose** | Interactive development, attaching breakpoints (`dlv`) to local HCL examples (`examples/resources/ghapp_installation`). | Automated, non-interactive CI/CD validation and regression testing against the static sandbox. |
-| **Target Organization (`org-b`)** | Static dedicated organization (`TF_VAR_target_org` / `GITHUB_TARGET_ORG` in `.env`). | Static dedicated organization (`GITHUB_TARGET_ORG`). Pre-check verifies `test-repo-1` and `test-repo-2` exist. |
+| **Target Organization (`org-b`)** | Static dedicated organization (`TF_VAR_target_org` / `GITHUB_TARGET_ORG` in `.env`). | Static dedicated organization (`GITHUB_TARGET_ORG`). Pre-check verifies required environment variables are configured. |
 | **App Authentication** | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` in `.env` to authenticate. | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` via `cmd/get-token`. |
 | **HCL Input Variables** | Uses `TF_VAR_enterprise_slug`, `TF_VAR_target_org`, `TF_VAR_client_id`, and `TF_EXAMPLE_DIR`. | Controlled entirely by Go test strings (`testAccConfig`); ignores `TF_VAR_*` variables. |
 
@@ -130,8 +130,8 @@ make testacc
 
 When `make testacc` runs:
 1. `cmd/get-token` parses `.env`, signs an RS256 JWT using `GITHUB_APP_PRIVATE_KEY_PATH`, and exports an authenticated `GITHUB_TOKEN` scoped to `org-b`.
-2. `testAccPreCheck` verifies variables (`GITHUB_TOKEN`, `GITHUB_ENTERPRISE_SLUG`, `GITHUB_TARGET_ORG`, `GITHUB_APP_CLIENT_ID`) and executes a fast read-only API check confirming that `test-repo-1` and `test-repo-2` exist inside `GITHUB_TARGET_ORG` (`org-b`).
-3. Automated sweepers (`sweepInstallations` via `-sweep=all`) query `GET /orgs/{org-b}/installations` and cleanly uninstall any existing installations matching `GITHUB_APP_CLIENT_ID` before tests begin.
+2. `testAccPreCheck` verifies that all required environment variables (`GITHUB_TOKEN`, `GITHUB_ENTERPRISE_SLUG`, `GITHUB_TARGET_ORG`, `GITHUB_APP_CLIENT_ID`) are configured before running live tests.
+3. Automated sweepers (`sweepInstallations` via `-sweep=all`) query enterprise installations via `client.Enterprise.ListAppInstallations` and cleanly uninstall any existing installations matching `GITHUB_APP_CLIENT_ID` before tests begin.
 4. `TestAccInstallationResource` executes the exhaustive 9-step sequence (`Create` -> `PlanOnly` -> `ImportState` -> `Update` swap -> `PlanOnly` -> `Update` multi -> `Update` `"all"` -> `PlanOnly` -> `Destroy`).
 5. Upon suite completion, `terraform destroy` cleanly uninstalls the Target App from `GITHUB_TARGET_ORG` (`org-b`), returning the organization to a pristine state for the next run.
 

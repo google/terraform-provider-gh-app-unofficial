@@ -27,7 +27,3 @@ func testAccPreCheck(t *testing.T) {
 		t.Fatal("GITHUB_TOKEN, GITHUB_ENTERPRISE_SLUG, GITHUB_TARGET_ORG, and GITHUB_APP_CLIENT_ID must be set for acceptance tests.")
 	}
 }
-
-func TestProvider(t *testing.T) {
-	_ = testAccProtoV6ProviderFactories
-}

@@ -12,6 +12,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
+// init registers a Terraform test sweeper for "ghapp_installation" resources.
+// Sweepers clean up dangling or orphaned live resources left behind if acceptance tests fail or crash before destroying resources.
+// Sweepers can be executed on demand using `go test -v -sweep=all ./internal/provider/...`.
 func init() {
 	resource.AddTestSweepers("ghapp_installation", &resource.Sweeper{
 		Name: "ghapp_installation",
@@ -178,27 +181,29 @@ func TestAccInstallationResource_Drift(t *testing.T) {
 					token := os.Getenv("GITHUB_TOKEN")
 					client, err := github.NewClient(github.WithAuthToken(token))
 					if err != nil {
-						t.Logf("PreConfig NewClient error: %v", err)
-						return
+						t.Fatalf("PreConfig NewClient error: %v", err)
 					}
 					insts, _, err := client.Enterprise.ListAppInstallations(ctx, entSlug, targetOrg, nil)
 					if err != nil {
-						t.Logf("PreConfig ListAppInstallations error: %v", err)
-						return
+						t.Fatalf("PreConfig ListAppInstallations error: %v", err)
 					}
+					found := false
 					for _, inst := range insts {
 						if inst.ClientID != nil && *inst.ClientID == clientID && inst.ID != nil {
+							found = true
 							opts := github.UpdateAppInstallationRepositoriesRequest{
 								RepositorySelection: github.Ptr("selected"),
 								Repositories:        []string{"test-repo-1", "test-repo-2"},
 							}
 							_, _, err := client.Enterprise.UpdateAppInstallationRepositories(ctx, entSlug, targetOrg, *inst.ID, opts)
 							if err != nil {
-								t.Logf("PreConfig UpdateAppInstallationRepositories error on inst %d: %v", *inst.ID, err)
-							} else {
-								t.Logf("PreConfig successfully updated inst %d to repositories %v", *inst.ID, opts.Repositories)
+								t.Fatalf("PreConfig UpdateAppInstallationRepositories error on inst %d: %v", *inst.ID, err)
 							}
+							t.Logf("PreConfig successfully updated inst %d to repositories %v", *inst.ID, opts.Repositories)
 						}
+					}
+					if !found {
+						t.Fatalf("PreConfig error: installation with client_id %s not found", clientID)
 					}
 				},
 				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1"`),
@@ -247,14 +252,9 @@ func testAccCheckInstallationDestroy(s *terraform.State) error {
 		return fmt.Errorf("error listing installations on CheckDestroy: %w", err)
 	}
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "ghapp_installation" {
-			continue
-		}
-		for _, inst := range insts {
-			if inst.ClientID != nil && *inst.ClientID == clientID {
-				return fmt.Errorf("installation with client_id %s still exists after destroy", clientID)
-			}
+	for _, inst := range insts {
+		if inst.ClientID != nil && *inst.ClientID == clientID {
+			return fmt.Errorf("installation with client_id %s still exists after destroy", clientID)
 		}
 	}
 
