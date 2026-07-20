@@ -176,7 +176,11 @@ func TestAccInstallationResource_Drift(t *testing.T) {
 				PreConfig: func() {
 					ctx := context.Background()
 					token := os.Getenv("GITHUB_TOKEN")
-					client, _ := github.NewClient(github.WithAuthToken(token))
+					client, err := github.NewClient(github.WithAuthToken(token))
+					if err != nil {
+						t.Logf("PreConfig NewClient error: %v", err)
+						return
+					}
 					insts, _, err := client.Enterprise.ListAppInstallations(ctx, entSlug, targetOrg, nil)
 					if err != nil {
 						t.Logf("PreConfig ListAppInstallations error: %v", err)
@@ -234,7 +238,10 @@ func testAccCheckInstallationDestroy(s *terraform.State) error {
 		return nil
 	}
 
-	client, _ := github.NewClient(github.WithAuthToken(token))
+	client, err := github.NewClient(github.WithAuthToken(token))
+	if err != nil {
+		return fmt.Errorf("error creating github client on CheckDestroy: %w", err)
+	}
 	insts, _, err := client.Enterprise.ListAppInstallations(ctx, entSlug, targetOrg, nil)
 	if err != nil {
 		return fmt.Errorf("error listing installations on CheckDestroy: %w", err)
