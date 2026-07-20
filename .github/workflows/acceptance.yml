@@ -1,0 +1,15 @@
+name: Acceptance Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      terraform_version:
+        description: 'Terraform CLI version'
+        required: false
+        default: 'latest'
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "This is a placeholder on main. Run this from branch feat/acc-tests."
