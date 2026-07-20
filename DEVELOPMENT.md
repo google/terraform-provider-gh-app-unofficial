@@ -91,6 +91,7 @@ TF_EXAMPLE_DIR="examples/resources/ghapp_installation"
 TF_VAR_enterprise_slug="my-test-enterprise"
 TF_VAR_target_org="target-org"
 TF_VAR_client_id="Iv1.abc123mock456xyz"
+TF_VAR_repository_selection="selected"
 TF_VAR_selected_repositories='["test-repo-1", "test-repo-2"]'
 ```
 

@@ -1,14 +1,6 @@
 name: Acceptance Tests
 
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - 'README.md'
-  pull_request:
-    paths-ignore:
-      - 'README.md'
   workflow_dispatch:
     inputs:
       terraform_version:
@@ -40,11 +32,11 @@ jobs:
         env:
           GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
           GITHUB_APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
         run: |
-          echo "${{ secrets.GH_APP_PRIVATE_KEY }}" > /tmp/manager.pem
-          TOKEN=$(go run ./cmd/get-token -key-path=/tmp/manager.pem)
+          TOKEN=$(go run ./cmd/get-token)
+          echo "::add-mask::${TOKEN}"
           echo "GITHUB_TOKEN=${TOKEN}" >> $GITHUB_ENV
-          rm /tmp/manager.pem
 
       - name: Run Resource Sweepers
         env:
@@ -60,3 +52,12 @@ jobs:
           GITHUB_TARGET_ORG: ${{ vars.GH_TARGET_ORG }}
           GITHUB_APP_CLIENT_ID: ${{ vars.GH_CLIENT_ID }}
         run: go test -v -race -cover -timeout 60m -run "^TestAcc" ./internal/provider/
+
+      - name: Revoke GitHub App Token
+        if: always() && env.GITHUB_TOKEN != ''
+        run: |
+          curl -s -X DELETE \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/installation/token
+
