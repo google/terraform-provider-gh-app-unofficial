@@ -45,25 +45,17 @@ func sweepInstallations(ctx context.Context) error {
 	}
 
 	opt := &github.ListOptions{PerPage: 100}
-	for {
-		installations, resp, err := client.Enterprise.ListAppInstallations(ctx, entSlug, targetOrg, opt)
+	for inst, err := range client.Enterprise.ListAppInstallationsIter(ctx, entSlug, targetOrg, opt) {
 		if err != nil {
 			return fmt.Errorf("failed to list organization installations in sweeper: %w", err)
 		}
 
-		for _, inst := range installations {
-			if inst.ClientID != nil && *inst.ClientID == clientID && inst.ID != nil {
-				_, err := client.Enterprise.UninstallApp(ctx, entSlug, targetOrg, *inst.ID)
-				if err != nil {
-					return fmt.Errorf("failed to sweep app installation %d: %w", *inst.ID, err)
-				}
+		if inst.ClientID != nil && *inst.ClientID == clientID && inst.ID != nil {
+			_, err := client.Enterprise.UninstallApp(ctx, entSlug, targetOrg, *inst.ID)
+			if err != nil {
+				return fmt.Errorf("failed to sweep app installation %d: %w", *inst.ID, err)
 			}
 		}
-
-		if resp.NextPage == 0 {
-			break
-		}
-		opt.Page = resp.NextPage
 	}
 
 	return nil

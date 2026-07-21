@@ -44,41 +44,31 @@ func flattenPermissions(ctx context.Context, permissions *github.InstallationPer
 	return permissionsVal
 }
 
-// listAllAppInstallations lists all GitHub App installations for an organization, paginating through all results.
+// listAllAppInstallations lists all GitHub App installations for an organization, paginating through all results using an iterator.
 func listAllAppInstallations(ctx context.Context, client *github.Client, enterpriseSlug, targetOrg string) ([]*github.Installation, error) {
 	var allInstallations []*github.Installation
 	opts := &github.ListOptions{PerPage: 100}
 
-	for {
-		installations, resp, err := client.Enterprise.ListAppInstallations(ctx, enterpriseSlug, targetOrg, opts)
+	for inst, err := range client.Enterprise.ListAppInstallationsIter(ctx, enterpriseSlug, targetOrg, opts) {
 		if err != nil {
 			return nil, err
 		}
-		allInstallations = append(allInstallations, installations...)
-		if resp.NextPage == 0 {
-			break
-		}
-		opts.Page = resp.NextPage
+		allInstallations = append(allInstallations, inst)
 	}
 
 	return allInstallations, nil
 }
 
-// listAllRepositoriesForOrgAppInstallation lists all repositories for an organization app installation, paginating through all results.
+// listAllRepositoriesForOrgAppInstallation lists all repositories for an organization app installation, paginating through all results using an iterator.
 func listAllRepositoriesForOrgAppInstallation(ctx context.Context, client *github.Client, enterpriseSlug, targetOrg string, installationID int64) ([]*github.AccessibleRepository, error) {
 	var allRepos []*github.AccessibleRepository
 	opts := &github.ListOptions{PerPage: 100}
 
-	for {
-		repos, resp, err := client.Enterprise.ListRepositoriesForOrgAppInstallation(ctx, enterpriseSlug, targetOrg, installationID, opts)
+	for repo, err := range client.Enterprise.ListRepositoriesForOrgAppInstallationIter(ctx, enterpriseSlug, targetOrg, installationID, opts) {
 		if err != nil {
 			return nil, err
 		}
-		allRepos = append(allRepos, repos...)
-		if resp.NextPage == 0 {
-			break
-		}
-		opts.Page = resp.NextPage
+		allRepos = append(allRepos, repo)
 	}
 
 	return allRepos, nil
