@@ -54,10 +54,9 @@ Inside **`org-b` (`GITHUB_TARGET_ORG`)**, create two permanent test repositories
 ### 2.3 The Manager App (Authentication & Sweeping Token Provider)
 The Manager App is used by `cmd/get-token` (`POST /app/installations/{id}/access_tokens`) to dynamically mint access tokens (`GITHUB_TOKEN`), granting Terraform permission to install, update, and uninstall app installations inside `org-b` (`target-org`).
 
-1. Navigate to your GitHub Enterprise or Organization Settings -> **GitHub Apps** -> **New GitHub App**.
+1. Navigate to your GitHub Enterprise Settings -> **GitHub Apps** -> **New GitHub App**.
 2. Set up required permissions:
-   - **Organization Administration**: `Read & write`.
-   - **App / Repository Administration**: `Read & write`.
+   - **Enterprise Permissions** -> **Enterprise Organization Installations**: `Read & write`.
 3. Generate and download a Private Key (`.pem` file).
 4. Install the Manager App onto **`org-b` (`target-org`)** (or at the Enterprise level). Ensure the Manager App installation is granted access to the test repositories inside `org-b` (e.g. by selecting **All repositories** or selecting your test repositories like `test-repo-1` and `test-repo-2`).
 5. Record:
@@ -69,8 +68,10 @@ The Manager App is used by `cmd/get-token` (`POST /app/installations/{id}/access
 The Target App is the child application owned inside `org-a` (`app-owner-org`) whose installations on `org-b` (`target-org`) are created, updated, and deleted by Terraform (`ghapp_installation`) during acceptance tests or debugging sessions.
 
 1. Create a GitHub App inside **`org-a` (`app-owner-org`)**.
-2. Ensure the app settings allow installation on other organizations (or any organization within your enterprise).
-3. Record its Client ID (`GITHUB_APP_CLIENT_ID`).
+2. Set up required permissions:
+   - **Repository Permissions** -> **Metadata**: `Read-only` (mandatory default permission for GitHub Apps).
+3. Ensure the app settings allow installation on other organizations (or any organization within your enterprise).
+4. Record its Client ID (`GITHUB_APP_CLIENT_ID`).
 
 ---
 
