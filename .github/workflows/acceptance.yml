@@ -8,8 +8,56 @@ on:
         required: false
         default: 'latest'
 
+concurrency:
+  group: ghapp-live-acceptance
+  cancel-in-progress: false
+
+permissions: read-all
+
 jobs:
-  placeholder:
+  acceptance:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "This is a placeholder on main. Run this from branch feat/acc-tests."
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ github.event.inputs.terraform_version != '' && github.event.inputs.terraform_version || 'latest' }}
+          terraform_wrapper: false
+      - run: go mod download
+      - name: Generate GitHub App Token
+        env:
+          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+        run: |
+          TOKEN=$(go run ./cmd/get-token)
+          echo "::add-mask::${TOKEN}"
+          echo "GITHUB_TOKEN=${TOKEN}" >> $GITHUB_ENV
+
+      - name: Run Resource Sweepers
+        env:
+          GITHUB_ENTERPRISE_SLUG: ${{ vars.GH_ENTERPRISE_SLUG }}
+          GITHUB_TARGET_ORG: ${{ vars.GH_TARGET_ORG }}
+          GITHUB_APP_CLIENT_ID: ${{ vars.GH_CLIENT_ID }}
+        run: go test -v -sweep=all ./internal/provider/
+
+      - name: Run Acceptance Tests
+        env:
+          TF_ACC: "1"
+          GITHUB_ENTERPRISE_SLUG: ${{ vars.GH_ENTERPRISE_SLUG }}
+          GITHUB_TARGET_ORG: ${{ vars.GH_TARGET_ORG }}
+          GITHUB_APP_CLIENT_ID: ${{ vars.GH_CLIENT_ID }}
+        run: go test -v -race -cover -timeout 60m -run "^TestAcc" ./internal/provider/
+
+      - name: Revoke GitHub App Token
+        if: always() && env.GITHUB_TOKEN != ''
+        run: |
+          curl -s -X DELETE \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/installation/token
+

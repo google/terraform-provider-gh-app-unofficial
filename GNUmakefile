@@ -16,7 +16,7 @@ fmt:
 	gofmt -s -w -e .
 
 test:
-	go test -v -cover -race -timeout=120s -parallel=10 ./...
+	go test -v -cover -race -timeout=120s -parallel=10 ./internal/provider/...
 
 testacc:
 	@if [ -f .env ]; then \
@@ -32,7 +32,6 @@ testacc:
 	export GITHUB_ENTERPRISE_SLUG=$${GITHUB_ENTERPRISE_SLUG:-$$TF_VAR_enterprise_slug}; \
 	export GITHUB_TARGET_ORG=$${GITHUB_TARGET_ORG:-$$TF_VAR_target_org}; \
 	export GITHUB_APP_CLIENT_ID=$${GITHUB_APP_CLIENT_ID:-$$TF_VAR_client_id}; \
-	export GITHUB_TEST_REPO=$${GITHUB_TEST_REPO:-test-1}; \
-	TF_ACC=1 go test -v -cover -race -timeout 120m ./...
+	TF_ACC=1 go test -v -cover -race -timeout 120m ./internal/provider/...
 
 .PHONY: fmt lint test testacc build install generate

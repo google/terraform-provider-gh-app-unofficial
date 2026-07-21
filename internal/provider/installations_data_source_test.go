@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +17,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestFlattenInstallations(t *testing.T) {
@@ -162,4 +167,74 @@ func TestFlattenInstallations(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAccInstallationsDataSource_Basic(t *testing.T) {
+	entSlug := os.Getenv("GITHUB_ENTERPRISE_SLUG")
+	targetOrg := os.Getenv("GITHUB_TARGET_ORG")
+	clientID := os.Getenv("GITHUB_APP_CLIENT_ID")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccInstallationsDataSourceConfig(entSlug, targetOrg, clientID),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("data.ghapp_installations.test", "target_org", targetOrg),
+					resource.TestCheckResourceAttrSet("data.ghapp_installations.test", "installations.#"),
+					func(s *terraform.State) error {
+						rs, ok := s.RootModule().Resources["data.ghapp_installations.test"]
+						if !ok {
+							return fmt.Errorf("resource not found: data.ghapp_installations.test")
+						}
+
+						idx := ""
+						for k, v := range rs.Primary.Attributes {
+							if strings.HasPrefix(k, "installations.") && strings.HasSuffix(k, ".client_id") && v == clientID {
+								parts := strings.Split(k, ".")
+								if len(parts) >= 3 {
+									idx = parts[1]
+									break
+								}
+							}
+						}
+
+						if idx == "" {
+							return fmt.Errorf("installation with client_id %s not found in data.ghapp_installations.test", clientID)
+						}
+
+						prefix := fmt.Sprintf("installations.%s", idx)
+						return resource.ComposeAggregateTestCheckFunc(
+							resource.TestCheckResourceAttrSet("data.ghapp_installations.test", prefix+".id"),
+							resource.TestCheckResourceAttr("data.ghapp_installations.test", prefix+".client_id", clientID),
+							resource.TestCheckResourceAttrSet("data.ghapp_installations.test", prefix+".app_slug"),
+							resource.TestCheckResourceAttr("data.ghapp_installations.test", prefix+".repository_selection", "all"),
+							resource.TestCheckResourceAttrSet("data.ghapp_installations.test", prefix+".created_at"),
+							resource.TestCheckResourceAttrSet("data.ghapp_installations.test", prefix+".updated_at"),
+						)(s)
+					},
+				),
+			},
+		},
+	})
+}
+
+func testAccInstallationsDataSourceConfig(enterpriseSlug, targetOrg, clientID string) string {
+	return fmt.Sprintf(`
+provider "ghapp" {
+  enterprise_slug = %[1]q
+}
+
+resource "ghapp_installation" "test" {
+  target_org           = %[2]q
+  client_id            = %[3]q
+  repository_selection = "all"
+}
+
+data "ghapp_installations" "test" {
+  target_org = %[2]q
+  depends_on = [ghapp_installation.test]
+}
+`, enterpriseSlug, targetOrg, clientID)
 }

@@ -16,7 +16,7 @@
         {
             "label": "Terraform Plan (Verification Example)",
             "type": "shell",
-            "command": "if [ -f .env ]; then export $(grep -v '^#' .env | xargs); fi; export GITHUB_TOKEN=$(go run ./cmd/get-token); terraform -chdir=${TF_EXAMPLE_DIR:-examples/installation-resource} plan",
+            "command": "set -a; [ -f .env ] && . .env; set +a; export GITHUB_TOKEN=$(go run ./cmd/get-token); terraform -chdir=${TF_EXAMPLE_DIR:-examples/resources/ghapp_installation} plan",
             "options": {
                 "cwd": "${workspaceFolder}"
             },
@@ -26,7 +26,7 @@
         {
             "label": "Terraform Apply (Verification Example)",
             "type": "shell",
-            "command": "if [ -f .env ]; then export $(grep -v '^#' .env | xargs); fi; export GITHUB_TOKEN=$(go run ./cmd/get-token); terraform -chdir=${TF_EXAMPLE_DIR:-examples/installation-resource} apply",
+            "command": "set -a; [ -f .env ] && . .env; set +a; export GITHUB_TOKEN=$(go run ./cmd/get-token); terraform -chdir=${TF_EXAMPLE_DIR:-examples/resources/ghapp_installation} apply",
             "options": {
                 "cwd": "${workspaceFolder}"
             },
