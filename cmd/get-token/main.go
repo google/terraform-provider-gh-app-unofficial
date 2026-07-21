@@ -120,7 +120,7 @@ func main() {
 	// Parse flags with fallback to env variables
 	flagAppID := flag.String("app-id", os.Getenv("GITHUB_APP_ID"), "GitHub App Client ID / Issuer ID (falls back to GITHUB_APP_ID env)")
 	flagKey := flag.String("key", getEnvAny("GITHUB_APP_PRIVATE_KEY", "GH_APP_PRIVATE_KEY"), "Raw private key PEM content (falls back to GITHUB_APP_PRIVATE_KEY or GH_APP_PRIVATE_KEY env)")
-	flagKeyPath := flag.String("key-path", getEnvAny("GITHUB_APP_PRIVATE_KEY_PATH", "GH_APP_PRIVATE_KEY_PATH"), "Path to the private key .pem file (falls back to GITHUB_APP_PRIVATE_KEY_PATH env)")
+	flagKeyPath := flag.String("key-path", getEnvAny("GITHUB_APP_PRIVATE_KEY_PATH", "GH_APP_PRIVATE_KEY_PATH"), "Full file path to the private key file (e.g. ~/keys/manager.pem, falls back to GITHUB_APP_PRIVATE_KEY_PATH env)")
 	flagInstID := flag.String("inst-id", os.Getenv("GITHUB_APP_INSTALLATION_ID"), "GitHub App Installation ID (falls back to GITHUB_APP_INSTALLATION_ID env)")
 	flagExport := flag.Bool("env-export", false, "Output format as export statement (e.g. export GITHUB_TOKEN=...)")
 	flag.Parse()
@@ -131,7 +131,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Please specify the configuration using command flags or environment variables (.env):\n")
 		fmt.Fprintf(os.Stderr, "  -app-id   / GITHUB_APP_ID               : %q\n", *flagAppID)
 		fmt.Fprintf(os.Stderr, "  -key      / GITHUB_APP_PRIVATE_KEY      : [raw PEM content]\n")
-		fmt.Fprintf(os.Stderr, "  -key-path / GITHUB_APP_PRIVATE_KEY_PATH : %q\n", *flagKeyPath)
+		fmt.Fprintf(os.Stderr, "  -key-path / GITHUB_APP_PRIVATE_KEY_PATH : %q (expects full file path including filename)\n", *flagKeyPath)
 		fmt.Fprintf(os.Stderr, "  -inst-id  / GITHUB_APP_INSTALLATION_ID  : %q\n\n", *flagInstID)
 		fmt.Fprintf(os.Stderr, "Example .env file:\n")
 		fmt.Fprintf(os.Stderr, "  GITHUB_APP_ID=3875173\n")
@@ -144,7 +144,7 @@ func main() {
 	if *flagKey != "" {
 		privateKeyPEM = []byte(*flagKey)
 	} else {
-		// Resolve private key file path
+		// Resolve private key file path (expects full file path including filename, e.g. ~/keys/manager.pem)
 		keyPath := *flagKeyPath
 		if strings.HasPrefix(keyPath, "~/") {
 			home, err := os.UserHomeDir()

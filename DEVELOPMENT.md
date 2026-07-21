@@ -62,7 +62,7 @@ The Manager App is used by `cmd/get-token` (`POST /app/installations/{id}/access
 4. Install the Manager App onto **`org-b` (`target-org`)** (or at the Enterprise level). Ensure the Manager App installation is granted access to the test repositories inside `org-b` (e.g. by selecting **All repositories** or selecting your test repositories like `test-repo-1` and `test-repo-2`).
 5. Record:
    - `GITHUB_APP_ID`: The numeric App Client ID / Issuer ID of the Manager App.
-   - `GITHUB_APP_PRIVATE_KEY_PATH`: Path to the `.pem` file (`~/keys/manager.pem`).
+   - `GITHUB_APP_PRIVATE_KEY_PATH`: Full file path to the downloaded private key file (e.g. `~/keys/manager.pem` or `manager.pem`), including the filename.
    - `GITHUB_APP_INSTALLATION_ID`: The numeric ID of the Manager App's installation targeting `org-b` (`target-org`).
 
 ### 2.4 The Target App (`org-a`)
