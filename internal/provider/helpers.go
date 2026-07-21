@@ -44,6 +44,46 @@ func flattenPermissions(ctx context.Context, permissions *github.InstallationPer
 	return permissionsVal
 }
 
+// listAllAppInstallations lists all GitHub App installations for an organization, paginating through all results.
+func listAllAppInstallations(ctx context.Context, client *github.Client, enterpriseSlug, targetOrg string) ([]*github.Installation, error) {
+	var allInstallations []*github.Installation
+	opts := &github.ListOptions{PerPage: 100}
+
+	for {
+		installations, resp, err := client.Enterprise.ListAppInstallations(ctx, enterpriseSlug, targetOrg, opts)
+		if err != nil {
+			return nil, err
+		}
+		allInstallations = append(allInstallations, installations...)
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return allInstallations, nil
+}
+
+// listAllRepositoriesForOrgAppInstallation lists all repositories for an organization app installation, paginating through all results.
+func listAllRepositoriesForOrgAppInstallation(ctx context.Context, client *github.Client, enterpriseSlug, targetOrg string, installationID int64) ([]*github.AccessibleRepository, error) {
+	var allRepos []*github.AccessibleRepository
+	opts := &github.ListOptions{PerPage: 100}
+
+	for {
+		repos, resp, err := client.Enterprise.ListRepositoriesForOrgAppInstallation(ctx, enterpriseSlug, targetOrg, installationID, opts)
+		if err != nil {
+			return nil, err
+		}
+		allRepos = append(allRepos, repos...)
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return allRepos, nil
+}
+
 // getSelectedRepositories lists repositories for an org app installation when selection is "selected",
 // returning their names as a Terraform types.Set. If selection is not "selected", it returns a null set.
 func getSelectedRepositories(ctx context.Context, client *github.Client, enterpriseSlug, targetOrg string, installationID int64, selection string, diags *diag.Diagnostics) types.Set {
@@ -51,7 +91,7 @@ func getSelectedRepositories(ctx context.Context, client *github.Client, enterpr
 		return types.SetNull(types.StringType)
 	}
 
-	repos, _, err := client.Enterprise.ListRepositoriesForOrgAppInstallation(ctx, enterpriseSlug, targetOrg, installationID, nil)
+	repos, err := listAllRepositoriesForOrgAppInstallation(ctx, client, enterpriseSlug, targetOrg, installationID)
 	if err != nil {
 		tflog.Error(ctx, "Failed to list repositories for installation", map[string]interface{}{
 			"error":           err.Error(),
