@@ -30,20 +30,20 @@ To cleanly verify organization installation lifecycles (`ghapp_installation`), o
 ```mermaid
 graph LR
     subgraph ORG_A ["org-a (App Owner Org: e.g. app-owner-org)"]
-        T_APP["Target App (GITHUB_APP_CLIENT_ID)"]
+        T_APP["Target App<br/>(GITHUB_APP_CLIENT_ID)"]
     end
 
     subgraph ORG_B ["org-b (Target Installation Org: e.g. target-org)"]
+        INST["ghapp_installation<br/>(Managed by Terraform)"]
         TR1["test-repo-1"]
         TR2["test-repo-2"]
-        INST["ghapp_installation (Managed by Terraform)"]
-        M_INST["Manager App Installation (GITHUB_APP_INSTALLATION_ID)"]
+        M_INST["Manager App Installation<br/>(GITHUB_APP_INSTALLATION_ID)"]
     end
 
-    T_APP -->|Installed & Managed on org-b| INST
-    INST -->|Repository Selection| TR1
-    INST -->|Repository Selection| TR2
-    M_INST -->|Generates GITHUB_TOKEN via cmd/get-token| INST
+    T_APP -->|"Installed & Managed on org-b"| INST
+    INST -->|"Repository Selection"| TR1
+    INST -->|"Repository Selection"| TR2
+    M_INST -->|"Generates GITHUB_TOKEN<br/>via cmd/get-token"| INST
 ```
 
 ### 2.2 Pre-Provisioning `org-b` (`target-org`)
