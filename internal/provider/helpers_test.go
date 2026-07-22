@@ -365,6 +365,27 @@ func TestGetSelectedRepositories(t *testing.T) {
 			wantCount: 0,
 			wantErr:   "Could not list repositories",
 		},
+		{
+			name:      "selected_multi_page_success",
+			selection: "selected",
+			rt: func(req *http.Request) (*http.Response, error) {
+				header := make(http.Header)
+				body := ""
+				if req.URL.Query().Get("page") == "2" {
+					body = `[{"name":"repo3"}]`
+				} else {
+					body = `[{"name":"repo1"},{"name":"repo2"}]`
+					header.Set("Link", `<https://api.github.com/enterprises/test-ent/apps/organizations/test-org/installations/123/repositories?page=2>; rel="next"`)
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewBufferString(body)),
+					Header:     header,
+				}, nil
+			},
+			wantCount: 3,
+			wantErr:   "",
+		},
 	}
 
 	for _, tc := range cases {
@@ -555,6 +576,144 @@ func TestParseCompositeID(t *testing.T) {
 				if gotInstIDStr != tc.wantInstIDStr {
 					t.Errorf("instIDStr = %q, want %q", gotInstIDStr, tc.wantInstIDStr)
 				}
+			}
+		})
+	}
+}
+
+func TestListAllAppInstallations(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		rt        roundTripperFunc
+		wantCount int
+		wantErr   string
+	}{
+		{
+			name: "single_page_installations",
+			rt: func(req *http.Request) (*http.Response, error) {
+				body := `[{"id":1,"app_slug":"app-1"},{"id":2,"app_slug":"app-2"}]`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewBufferString(body)),
+					Header:     make(http.Header),
+				}, nil
+			},
+			wantCount: 2,
+			wantErr:   "",
+		},
+		{
+			name: "multi_page_installations",
+			rt: func(req *http.Request) (*http.Response, error) {
+				header := make(http.Header)
+				body := ""
+				if req.URL.Query().Get("page") == "2" {
+					body = `[{"id":3,"app_slug":"app-3"}]`
+				} else {
+					body = `[{"id":1,"app_slug":"app-1"},{"id":2,"app_slug":"app-2"}]`
+					header.Set("Link", `<https://api.github.com/enterprises/my-ent/apps/organizations/my-org/installations?page=2>; rel="next"`)
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewBufferString(body)),
+					Header:     header,
+				}, nil
+			},
+			wantCount: 3,
+			wantErr:   "",
+		},
+		{
+			name: "api_error_returns_error",
+			rt: func(req *http.Request) (*http.Response, error) {
+				return nil, errors.New("network failure")
+			},
+			wantCount: 0,
+			wantErr:   "network failure",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			httpClient := &http.Client{Transport: tc.rt}
+			client, _ := github.NewClient(github.WithHTTPClient(httpClient))
+
+			got, err := listAllAppInstallations(ctx, client, "my-ent", "my-org")
+
+			checkErrorOrDiags(t, err, tc.wantErr)
+			if tc.wantErr == "" && len(got) != tc.wantCount {
+				t.Errorf("expected %d installations, got %d", tc.wantCount, len(got))
+			}
+		})
+	}
+}
+
+func TestListAllRepositoriesForOrgAppInstallation(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		rt        roundTripperFunc
+		wantCount int
+		wantErr   string
+	}{
+		{
+			name: "single_page_repositories",
+			rt: func(req *http.Request) (*http.Response, error) {
+				body := `[{"name":"repo-1"},{"name":"repo-2"}]`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewBufferString(body)),
+					Header:     make(http.Header),
+				}, nil
+			},
+			wantCount: 2,
+			wantErr:   "",
+		},
+		{
+			name: "multi_page_repositories",
+			rt: func(req *http.Request) (*http.Response, error) {
+				header := make(http.Header)
+				body := ""
+				if req.URL.Query().Get("page") == "2" {
+					body = `[{"name":"repo-3"}]`
+				} else {
+					body = `[{"name":"repo-1"},{"name":"repo-2"}]`
+					header.Set("Link", `<https://api.github.com/enterprises/my-ent/apps/organizations/my-org/installations/123/repositories?page=2>; rel="next"`)
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewBufferString(body)),
+					Header:     header,
+				}, nil
+			},
+			wantCount: 3,
+			wantErr:   "",
+		},
+		{
+			name: "api_error_returns_error",
+			rt: func(req *http.Request) (*http.Response, error) {
+				return nil, errors.New("network error")
+			},
+			wantCount: 0,
+			wantErr:   "network error",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			httpClient := &http.Client{Transport: tc.rt}
+			client, _ := github.NewClient(github.WithHTTPClient(httpClient))
+
+			got, err := listAllRepositoriesForOrgAppInstallation(ctx, client, "my-ent", "my-org", 123)
+
+			checkErrorOrDiags(t, err, tc.wantErr)
+			if tc.wantErr == "" && len(got) != tc.wantCount {
+				t.Errorf("expected %d repositories, got %d", tc.wantCount, len(got))
 			}
 		})
 	}
