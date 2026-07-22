@@ -1,10 +1,11 @@
 terraform {
   required_providers {
-    ghapp = {
+    gh-app-unofficial = {
       source = "registry.terraform.io/google/gh-app-unofficial"
     }
   }
 }
+
 variable "enterprise_slug" {
   type        = string
   description = "The enterprise slug."
@@ -28,17 +29,18 @@ variable "repository_selection" {
   description = "The type of repository selection for the app installation. Can be 'all' or 'selected'."
   default     = "all"
 }
+
 variable "selected_repositories" {
   type        = set(string)
   description = "The list of repository names the installation has access to. Required when repository_selection is 'selected'."
   default     = null
 }
 
-provider "ghapp" {
+provider "gh-app-unofficial" {
   enterprise_slug = var.enterprise_slug
 }
 
-resource "ghapp_installation" "test-app" {
+resource "gh-app-unofficial_installation" "test-app" {
   target_org            = var.target_org
   client_id             = var.client_id
   repository_selection  = var.repository_selection
@@ -46,5 +48,5 @@ resource "ghapp_installation" "test-app" {
 }
 
 output "installation" {
-  value = ghapp_installation.test-app
+  value = gh-app-unofficial_installation.test-app
 }

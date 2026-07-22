@@ -3,4 +3,4 @@
 # Because `target_org` and `client_id` are required fields in the resource schema, your `.tf` resource
 # configuration block must contain matching `target_org` and `client_id` values after importing so that
 # subsequent `terraform plan` runs show no unexpected diffs.
-terraform import ghapp_installation.example "my-org/12345678"
+terraform import gh-app-unofficial_installation.example "my-org/12345678"

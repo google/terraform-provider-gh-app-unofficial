@@ -13,7 +13,7 @@ import (
 
 // testAccProtoV6ProviderFactories is used to instantiate a provider during acceptance testing.
 var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-	"ghapp": providerserver.NewProtocol6WithError(New("test")()),
+	"gh-app-unofficial": providerserver.NewProtocol6WithError(New("test")()),
 }
 
 func testAccPreCheck(t *testing.T) {

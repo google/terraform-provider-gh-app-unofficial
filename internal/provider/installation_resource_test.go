@@ -12,12 +12,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
-// init registers a Terraform test sweeper for "ghapp_installation" resources.
+// init registers a Terraform test sweeper for "gh-app-unofficial_installation" resources.
 // Sweepers clean up dangling or orphaned live resources left behind if acceptance tests fail or crash before destroying resources.
 // Sweepers can be executed on demand using `go test -v -sweep=all ./internal/provider/...`.
 func init() {
-	resource.AddTestSweepers("ghapp_installation", &resource.Sweeper{
-		Name: "ghapp_installation",
+	resource.AddTestSweepers("gh-app-unofficial_installation", &resource.Sweeper{
+		Name: "gh-app-unofficial_installation",
 		F: func(region string) error {
 			ctx := context.Background()
 			return sweepInstallations(ctx)
@@ -75,15 +75,15 @@ func TestAccInstallationResource(t *testing.T) {
 			{
 				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1"`),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ghapp_installation.test", "target_org", targetOrg),
-					resource.TestCheckResourceAttr("ghapp_installation.test", "client_id", clientID),
-					resource.TestCheckResourceAttr("ghapp_installation.test", "repository_selection", "selected"),
-					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.#", "1"),
-					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.0", "test-repo-1"),
-					resource.TestCheckResourceAttrSet("ghapp_installation.test", "id"),
-					resource.TestCheckResourceAttrSet("ghapp_installation.test", "installation_id"),
-					resource.TestCheckResourceAttrSet("ghapp_installation.test", "created_at"),
-					resource.TestCheckResourceAttrSet("ghapp_installation.test", "updated_at"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "target_org", targetOrg),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "client_id", clientID),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "repository_selection", "selected"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.#", "1"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.0", "test-repo-1"),
+					resource.TestCheckResourceAttrSet("gh-app-unofficial_installation.test", "id"),
+					resource.TestCheckResourceAttrSet("gh-app-unofficial_installation.test", "installation_id"),
+					resource.TestCheckResourceAttrSet("gh-app-unofficial_installation.test", "created_at"),
+					resource.TestCheckResourceAttrSet("gh-app-unofficial_installation.test", "updated_at"),
 				),
 			},
 			// Step 2: Idempotency Verification on Create
@@ -93,7 +93,7 @@ func TestAccInstallationResource(t *testing.T) {
 			},
 			// Step 3: Import State Verification
 			{
-				ResourceName:            "ghapp_installation.test",
+				ResourceName:            "gh-app-unofficial_installation.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"updated_at"},
@@ -102,9 +102,9 @@ func TestAccInstallationResource(t *testing.T) {
 			{
 				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-2"`),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ghapp_installation.test", "repository_selection", "selected"),
-					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.#", "1"),
-					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.0", "test-repo-2"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "repository_selection", "selected"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.#", "1"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.0", "test-repo-2"),
 				),
 			},
 			// Step 5: Idempotency Verification on Swap
@@ -116,16 +116,16 @@ func TestAccInstallationResource(t *testing.T) {
 			{
 				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1", "test-repo-2"`),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ghapp_installation.test", "repository_selection", "selected"),
-					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.#", "2"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "repository_selection", "selected"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.#", "2"),
 				),
 			},
 			// Step 7: Update - Toggle Selection Mode to "all"
 			{
 				Config: testAccInstallationConfig_all(entSlug, targetOrg, clientID),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ghapp_installation.test", "repository_selection", "all"),
-					resource.TestCheckNoResourceAttr("ghapp_installation.test", "selected_repositories"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "repository_selection", "all"),
+					resource.TestCheckNoResourceAttr("gh-app-unofficial_installation.test", "selected_repositories"),
 				),
 			},
 			// Step 8: Idempotency Verification on Mode Toggle
@@ -141,9 +141,9 @@ func TestAccInstallationResource(t *testing.T) {
 			{
 				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1"`),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ghapp_installation.test", "repository_selection", "selected"),
-					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.#", "1"),
-					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.0", "test-repo-1"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "repository_selection", "selected"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.#", "1"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.0", "test-repo-1"),
 				),
 			},
 		},
@@ -163,7 +163,7 @@ func TestAccInstallationResource_Drift(t *testing.T) {
 			{
 				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1"`),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.#", "1"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.#", "1"),
 				),
 			},
 			{
@@ -200,7 +200,7 @@ func TestAccInstallationResource_Drift(t *testing.T) {
 				},
 				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-1"`),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ghapp_installation.test", "selected_repositories.#", "2"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.#", "2"),
 				),
 				ExpectNonEmptyPlan: true,
 				PlanOnly:           true,
@@ -255,11 +255,11 @@ func testAccCheckInstallationDestroy(s *terraform.State) error {
 
 func testAccInstallationConfig_selected(enterpriseSlug, targetOrg, clientID, repos string) string {
 	return fmt.Sprintf(`
-provider "ghapp" {
+provider "gh-app-unofficial" {
   enterprise_slug = %[1]q
 }
 
-resource "ghapp_installation" "test" {
+resource "gh-app-unofficial_installation" "test" {
   target_org            = %[2]q
   client_id             = %[3]q
   repository_selection  = "selected"
@@ -270,11 +270,11 @@ resource "ghapp_installation" "test" {
 
 func testAccInstallationConfig_all(enterpriseSlug, targetOrg, clientID string) string {
 	return fmt.Sprintf(`
-provider "ghapp" {
+provider "gh-app-unofficial" {
   enterprise_slug = %[1]q
 }
 
-resource "ghapp_installation" "test" {
+resource "gh-app-unofficial_installation" "test" {
   target_org           = %[2]q
   client_id            = %[3]q
   repository_selection = "all"

@@ -40,14 +40,14 @@ To configure the provider in your Terraform configurations, add the following bl
 ```hcl
 terraform {
   required_providers {
-    ghapp = {
+    gh-app-unofficial = {
       source  = "google/gh-app-unofficial" # (Or your custom registry source once published)
       version = "~> 1.0"
     }
   }
 }
 
-provider "ghapp" {
+provider "gh-app-unofficial" {
   enterprise_slug = "my-enterprise-slug"
 
   # Optional: API access token (can also be set via GITHUB_TOKEN env var)
@@ -95,7 +95,7 @@ Both local interactive debugging (`dlv` / VS Code `F5`) and automated acceptance
 
 | Category | Manual Debugging & Dev Mode (`dlv` / VS Code F5) | Automated Acceptance Testing (`make testacc` / CI) |
 | :--- | :--- | :--- |
-| **Purpose** | Interactive development, attaching breakpoints (`dlv`) to local HCL examples (`examples/resources/ghapp_installation`). | Automated, non-interactive CI/CD validation and regression testing against the static sandbox (`resource.Test`). |
+| **Purpose** | Interactive development, attaching breakpoints (`dlv`) to local HCL examples (`examples/resources/gh-app-unofficial_installation`). | Automated, non-interactive CI/CD validation and regression testing against the static sandbox (`resource.Test`). |
 | **Target Organization (`org-b`)** | Static dedicated organization (`TF_VAR_target_org` in `.env`). | Static dedicated organization (`TF_VAR_target_org` / `GITHUB_TARGET_ORG`). Pre-check verifies test repositories exist. |
 | **App Authentication** | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` in `.env` to authenticate. | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` via `cmd/get-token` to mint `GITHUB_TOKEN`. |
 | **HCL Input Variables** | Uses `TF_VAR_enterprise_slug`, `TF_VAR_target_org`, `TF_VAR_client_id`, and `TF_EXAMPLE_DIR`. | Controlled by Go test strings (`testAccConfig`), inheriting target configuration directly from `TF_VAR_*` variables. |
