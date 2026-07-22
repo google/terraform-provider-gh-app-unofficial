@@ -194,13 +194,9 @@ func flattenInstallations(ctx context.Context, client *github.Client, enterprise
 		}
 
 		instIDStr := strconv.FormatInt(installation.GetID(), 10)
-		instTargetOrg := targetOrg
-		if instTargetOrg == "" && installation.GetAccount() != nil {
-			instTargetOrg = installation.GetAccount().GetLogin()
-		}
 		compositeID := instIDStr
-		if instTargetOrg != "" {
-			compositeID = fmt.Sprintf("%s/%s", instTargetOrg, instIDStr)
+		if targetOrg != "" {
+			compositeID = fmt.Sprintf("%s/%s", targetOrg, instIDStr)
 		}
 
 		result = append(result, app{
