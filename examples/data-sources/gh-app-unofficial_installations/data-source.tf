@@ -22,10 +22,10 @@ provider "gh-app-unofficial" {
   enterprise_slug = var.enterprise_slug
 }
 
-data "gh_app_unofficial_installations" "example" {
+data "gh-app-unofficial_installations" "example" {
   target_org = var.target_org
 }
 
 output "installations" {
-  value = data.gh_app_unofficial_installations.example.installations
+  value = data.gh-app-unofficial_installations.example.installations
 }

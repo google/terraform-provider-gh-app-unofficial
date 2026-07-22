@@ -78,8 +78,8 @@ read -r
 
 export TF_REATTACH_PROVIDERS="$TF_REATTACH"
 
-# Run terraform in the target example directory (defaults to examples/resources/gh_app_unofficial_installation)
-TARGET_DIR="${TF_EXAMPLE_DIR:-examples/resources/gh_app_unofficial_installation}"
+# Run terraform in the target example directory (defaults to examples/resources/gh-app-unofficial_installation)
+TARGET_DIR="${TF_EXAMPLE_DIR:-examples/resources/gh-app-unofficial_installation}"
 echo "Changing directory to $TARGET_DIR"
 cd "$TARGET_DIR"
 
