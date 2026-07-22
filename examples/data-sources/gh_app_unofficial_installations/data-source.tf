@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    ghapp = {
+    gh-app-unofficial = {
       source = "registry.terraform.io/google/gh-app-unofficial"
     }
   }
@@ -18,14 +18,14 @@ variable "target_org" {
   default     = "example-org"
 }
 
-provider "ghapp" {
+provider "gh-app-unofficial" {
   enterprise_slug = var.enterprise_slug
 }
 
-data "ghapp_installations" "example" {
+data "gh_app_unofficial_installations" "example" {
   target_org = var.target_org
 }
 
 output "installations" {
-  value = data.ghapp_installations.example.installations
+  value = data.gh_app_unofficial_installations.example.installations
 }

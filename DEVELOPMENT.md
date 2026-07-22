@@ -23,7 +23,7 @@ To contribute to or debug the provider, ensure the following core tools are inst
 Acceptance testing (`make testacc` / CI) and interactive debugging (`dlv`) require credentials for **two distinct GitHub Apps** operating across a clear two-organization structure under a GitHub Enterprise Cloud or Server account (`GITHUB_ENTERPRISE_SLUG`).
 
 ### 2.1 The Two-Organization Structure (`org-a` vs. `org-b`)
-To cleanly verify organization installation lifecycles (`ghapp_installation`), our workflow separates the organization where the Target App is owned (`org-a`) from the target sandbox organization where the app is installed and tested (`org-b`):
+To cleanly verify organization installation lifecycles (`gh_app_unofficial_installation`), our workflow separates the organization where the Target App is owned (`org-a`) from the target sandbox organization where the app is installed and tested (`org-b`):
 - **`org-a` (App Owner Organization, e.g., `app-owner-org`):** The organization where the **Target App** (`GITHUB_APP_CLIENT_ID`) is registered and owned.
 - **`org-b` (Target Installation Organization, e.g., `target-org` / `GITHUB_TARGET_ORG`):** The dedicated static sandbox organization where the **Target App** is installed, updated, and uninstalled by our Terraform provider, and where our static fixture repositories (`test-repo-1`, `test-repo-2`) reside.
 
@@ -34,7 +34,7 @@ graph LR
     end
 
     subgraph ORG_B ["org-b (Target Installation Org: e.g. target-org)"]
-        INST["ghapp_installation<br/>(Managed by Terraform)"]
+        INST["gh_app_unofficial_installation<br/>(Managed by Terraform)"]
         TR1["test-repo-1"]
         TR2["test-repo-2"]
         M_INST["Manager App Installation<br/>(GITHUB_APP_INSTALLATION_ID)"]
@@ -65,7 +65,7 @@ The Manager App is used by `cmd/get-token` (`POST /app/installations/{id}/access
    - `GITHUB_APP_INSTALLATION_ID`: The numeric ID of the Manager App's installation targeting `org-b` (`target-org`).
 
 ### 2.4 The Target App (`org-a`)
-The Target App is the child application owned inside `org-a` (`app-owner-org`) whose installations on `org-b` (`target-org`) are created, updated, and deleted by Terraform (`ghapp_installation`) during acceptance tests or debugging sessions.
+The Target App is the child application owned inside `org-a` (`app-owner-org`) whose installations on `org-b` (`target-org`) are created, updated, and deleted by Terraform (`gh_app_unofficial_installation`) during acceptance tests or debugging sessions.
 
 1. Create a GitHub App inside **`org-a` (`app-owner-org`)**.
 2. Set up required permissions:
@@ -86,7 +86,7 @@ GITHUB_APP_PRIVATE_KEY_PATH="~/keys/manager.pem"
 GITHUB_APP_INSTALLATION_ID="135885315"
 
 # Target example directory for debugging
-TF_EXAMPLE_DIR="examples/resources/ghapp_installation"
+TF_EXAMPLE_DIR="examples/resources/gh_app_unofficial_installation"
 
 # Unified variables used seamlessly across both VS Code debugging (dlv) and make testacc
 TF_VAR_enterprise_slug="my-test-enterprise"
@@ -107,7 +107,7 @@ Both local interactive debugging (`dlv` / VS Code `F5`) and automated acceptance
 
 | Category | Manual Debugging & Dev Mode (`dlv` / VS Code F5) | Automated Acceptance Testing (`make testacc` / CI) |
 | :--- | :--- | :--- |
-| **Purpose** | Interactive development, attaching breakpoints (`dlv`) to local HCL examples (`examples/resources/ghapp_installation`). | Automated, non-interactive CI/CD validation and regression testing against the static sandbox. |
+| **Purpose** | Interactive development, attaching breakpoints (`dlv`) to local HCL examples (`examples/resources/gh_app_unofficial_installation`). | Automated, non-interactive CI/CD validation and regression testing against the static sandbox. |
 | **Target Organization (`org-b`)** | Static dedicated organization (`TF_VAR_target_org` / `GITHUB_TARGET_ORG` in `.env`). | Static dedicated organization (`GITHUB_TARGET_ORG`). Pre-check verifies required environment variables are configured. |
 | **App Authentication** | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` in `.env` to authenticate. | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` via `cmd/get-token`. |
 | **HCL Input Variables** | Uses `TF_VAR_enterprise_slug`, `TF_VAR_target_org`, `TF_VAR_client_id`, and `TF_EXAMPLE_DIR`. | Controlled entirely by Go test strings (`testAccConfig`); ignores `TF_VAR_*` variables. |
