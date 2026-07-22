@@ -44,16 +44,16 @@ func sweepInstallations(ctx context.Context) error {
 		return fmt.Errorf("failed to create client in sweeper: %w", err)
 	}
 
-	opt := &github.ListOptions{PerPage: 100}
-	for inst, err := range client.Enterprise.ListAppInstallationsIter(ctx, entSlug, targetOrg, opt) {
-		if err != nil {
-			return fmt.Errorf("failed to list organization installations in sweeper: %w", err)
-		}
+	installations, err := listAllAppInstallations(ctx, client, entSlug, targetOrg)
+	if err != nil {
+		return fmt.Errorf("failed to list organization installations in sweeper: %w", err)
+	}
 
-		if inst.ClientID != nil && *inst.ClientID == clientID && inst.ID != nil {
-			_, err := client.Enterprise.UninstallApp(ctx, entSlug, targetOrg, *inst.ID)
+	for _, inst := range installations {
+		if inst.GetClientID() == clientID && inst.ID != nil {
+			_, err := client.Enterprise.UninstallApp(ctx, entSlug, targetOrg, inst.GetID())
 			if err != nil {
-				return fmt.Errorf("failed to sweep app installation %d: %w", *inst.ID, err)
+				return fmt.Errorf("failed to sweep app installation %d: %w", inst.GetID(), err)
 			}
 		}
 	}
