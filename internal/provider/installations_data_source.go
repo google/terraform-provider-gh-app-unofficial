@@ -53,7 +53,7 @@ func (d *installationsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"target_org": schema.StringAttribute{
-				Optional:    true,
+				Required:    true,
 				Description: "The organization name for which to list installations.",
 			},
 			"installations": schema.ListNestedAttribute{
@@ -194,10 +194,7 @@ func flattenInstallations(ctx context.Context, client *github.Client, enterprise
 		}
 
 		instIDStr := strconv.FormatInt(installation.GetID(), 10)
-		compositeID := instIDStr
-		if targetOrg != "" {
-			compositeID = fmt.Sprintf("%s/%s", targetOrg, instIDStr)
-		}
+		compositeID := fmt.Sprintf("%s/%s", targetOrg, instIDStr)
 
 		result = append(result, app{
 			ID:                   types.StringValue(compositeID),
