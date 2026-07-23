@@ -28,12 +28,7 @@ builds:
     - darwin
   goarch:
     - amd64
-    - arm
     - arm64
-  ignore:
-    - goos: darwin
-    - goos: windows
-      goarch: arm
   binary: '{{ .ProjectName }}_v{{ .Version }}'
 archives:
 - formats:
