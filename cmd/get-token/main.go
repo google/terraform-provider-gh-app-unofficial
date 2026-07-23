@@ -153,12 +153,21 @@ func main() {
 			}
 		}
 
-		if strings.ToLower(filepath.Ext(keyPath)) != ".pem" {
-			fmt.Fprintf(os.Stderr, "Error: Invalid key path %q: private key file must have a .pem extension\n", keyPath)
+		info, err := os.Stat(keyPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, "Error: Key path %q does not exist\n", keyPath)
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: Failed to stat key path %q: %v\n", keyPath, err)
+			}
 			os.Exit(1)
 		}
 
-		var err error
+		if info.IsDir() {
+			fmt.Fprintf(os.Stderr, "Error: Invalid key path %q: expected a file, got a directory\n", keyPath)
+			os.Exit(1)
+		}
+
 		privateKeyPEM, err = os.ReadFile(keyPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to read private key from %s: %v\n", keyPath, err)
