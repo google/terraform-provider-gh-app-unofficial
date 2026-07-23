@@ -89,7 +89,8 @@ func TestFlattenInstallations(t *testing.T) {
 			},
 			want: []app{
 				{
-					ID:                   types.StringValue("11111"),
+					ID:                   types.StringValue("test-org/11111"),
+					InstallationID:       types.StringValue("11111"),
 					ClientID:             types.StringValue("mock-client-id-abc"),
 					AppSlug:              types.StringValue("test-app"),
 					SelectedRepositories: types.SetNull(types.StringType),
@@ -116,7 +117,8 @@ func TestFlattenInstallations(t *testing.T) {
 			},
 			want: []app{
 				{
-					ID:                   types.StringValue("22222"),
+					ID:                   types.StringValue("test-org/22222"),
+					InstallationID:       types.StringValue("22222"),
 					ClientID:             types.StringValue("mock-client-id-xyz"),
 					AppSlug:              types.StringValue("selected-app"),
 					SelectedRepositories: reposMust([]string{"repo-alpha", "repo-beta"}),
@@ -207,6 +209,7 @@ func TestAccInstallationsDataSource_Basic(t *testing.T) {
 						prefix := fmt.Sprintf("installations.%s", idx)
 						return resource.ComposeAggregateTestCheckFunc(
 							resource.TestCheckResourceAttrSet("data.gh-app-unofficial_installations.test", prefix+".id"),
+							resource.TestCheckResourceAttrSet("data.gh-app-unofficial_installations.test", prefix+".installation_id"),
 							resource.TestCheckResourceAttr("data.gh-app-unofficial_installations.test", prefix+".client_id", clientID),
 							resource.TestCheckResourceAttrSet("data.gh-app-unofficial_installations.test", prefix+".app_slug"),
 							resource.TestCheckResourceAttr("data.gh-app-unofficial_installations.test", prefix+".repository_selection", "all"),

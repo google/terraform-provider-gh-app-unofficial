@@ -30,7 +30,8 @@ func (d *installationsDataSource) Metadata(_ context.Context, req datasource.Met
 
 // app represents the model of a single GitHub App Installation in the Terraform state.
 type app struct {
-	ID                   types.String `tfsdk:"id"` // This is the installation ID of the app
+	ID                   types.String `tfsdk:"id"`
+	InstallationID       types.String `tfsdk:"installation_id"`
 	ClientID             types.String `tfsdk:"client_id"`
 	AppSlug              types.String `tfsdk:"app_slug"`
 	SelectedRepositories types.Set    `tfsdk:"selected_repositories"`
@@ -52,7 +53,7 @@ func (d *installationsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"target_org": schema.StringAttribute{
-				Optional:    true,
+				Required:    true,
 				Description: "The organization name for which to list installations.",
 			},
 			"installations": schema.ListNestedAttribute{
@@ -61,7 +62,11 @@ func (d *installationsDataSource) Schema(_ context.Context, _ datasource.SchemaR
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"id": schema.StringAttribute{
-							MarkdownDescription: "The ID of the app installation.",
+							MarkdownDescription: "The composite ID of the app installation in the format `<target_org>/<installation_id>`.",
+							Computed:            true,
+						},
+						"installation_id": schema.StringAttribute{
+							MarkdownDescription: "The numeric ID of the app installation.",
 							Computed:            true,
 						},
 						"client_id": schema.StringAttribute{
@@ -188,8 +193,12 @@ func flattenInstallations(ctx context.Context, client *github.Client, enterprise
 			return nil
 		}
 
+		instIDStr := strconv.FormatInt(installation.GetID(), 10)
+		compositeID := fmt.Sprintf("%s/%s", targetOrg, instIDStr)
+
 		result = append(result, app{
-			ID:                   types.StringValue(strconv.FormatInt(installation.GetID(), 10)),
+			ID:                   types.StringValue(compositeID),
+			InstallationID:       types.StringValue(instIDStr),
 			ClientID:             types.StringValue(installation.GetClientID()),
 			AppSlug:              types.StringValue(installation.GetAppSlug()),
 			SelectedRepositories: selectedReposVal,
