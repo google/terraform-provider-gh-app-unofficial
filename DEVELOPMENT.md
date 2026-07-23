@@ -176,3 +176,15 @@ If rotating to new organizations or renewing an enterprise trial:
 3. Inside `org-b` (`target-org`), initialize two repositories (`test-repo-1` and `test-repo-2`).
 4. Install the Manager App (`GITHUB_APP_ID`) onto `org-b` (`target-org`) with App/Org administration permissions and note its Installation ID (`GITHUB_APP_INSTALLATION_ID`).
 5. Update `.env` locally or GitHub Actions Repository Secrets/Variables (`GH_APP_ID`, `GH_APP_INSTALLATION_ID`, `GH_APP_CLIENT_ID`, `GH_APP_TEST_ENTERPRISE`, `GH_APP_TEST_ORG`, `GH_APP_PRIVATE_KEY`).
+
+## 8. Binary Release & Installation Guide
+
+### 8.1 Releasing a New Version
+To release a new binary version of the provider:
+1. Ensure `main` branch is up to date and passing tests.
+2. Create and push a semantic tag:
+   ```shell
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+3. GitHub Actions will trigger .github/workflows/release.yml, verify that the tag belongs to main, cross-compile provider binaries for Linux, macOS, and Windows, upload them to GitHub Releases, and generate SLSA build attestations.
