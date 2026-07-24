@@ -37,6 +37,8 @@ website/vendor
 # Local compiled binaries
 terraform-provider-gh-app-unofficial
 debug_bin
+get-token
+
 
 # Local development overrides & secrets
 .terraformrc
