@@ -82,7 +82,7 @@ func TestAccInstallationResource(t *testing.T) {
 					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "client_id", clientID),
 					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "repository_selection", "selected"),
 					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.#", "1"),
-					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.0", "test-repo-1"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "recreate_on_permissions_change", "false"),
 					resource.TestCheckResourceAttrSet("gh-app-unofficial_installation.test", "id"),
 					resource.TestCheckResourceAttrSet("gh-app-unofficial_installation.test", "installation_id"),
 					resource.TestCheckResourceAttrSet("gh-app-unofficial_installation.test", "created_at"),

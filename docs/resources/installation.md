@@ -77,6 +77,7 @@ output "installation" {
 
 ### Optional
 
+- `recreate_on_permissions_change` (Boolean) Whether to automatically recreate the app installation when requested permissions change on the GitHub App definition. Defaults to `false`. When `false`, Terraform tracks active installed permissions and expects an Organization Owner to accept pending permission requests via GitHub UI. When `true`, Terraform forces resource replacement (uninstall and reinstall), creating a new `installation_id` with the updated permissions applied immediately.
 - `repository_selection` (String) The type of repository selection for the app installation. Either set to 'all' or 'selected'.
 - `selected_repositories` (Set of String) The list of repository names the installation has access to. Only valid and required when repository_selection is set to 'selected'.
 

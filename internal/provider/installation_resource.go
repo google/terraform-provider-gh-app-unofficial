@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -27,6 +28,7 @@ var (
 	_ resource.ResourceWithConfigure      = &installationResource{}
 	_ resource.ResourceWithImportState    = &installationResource{}
 	_ resource.ResourceWithValidateConfig = &installationResource{}
+	_ resource.ResourceWithModifyPlan     = &installationResource{}
 )
 
 // installationResource is the resource implementation.
@@ -36,17 +38,18 @@ type installationResource struct {
 
 // installationResourceModel describes the resource data model.
 type installationResourceModel struct {
-	ID                   types.String `tfsdk:"id"`
-	InstallationID       types.String `tfsdk:"installation_id"`
-	TargetOrg            types.String `tfsdk:"target_org"`
-	ClientID             types.String `tfsdk:"client_id"`
-	AppSlug              types.String `tfsdk:"app_slug"`
-	SelectedRepositories types.Set    `tfsdk:"selected_repositories"`
-	RepositorySelection  types.String `tfsdk:"repository_selection"`
-	Events               types.List   `tfsdk:"events"`
-	Permissions          types.Map    `tfsdk:"permissions"`
-	CreatedAt            types.String `tfsdk:"created_at"`
-	UpdatedAt            types.String `tfsdk:"updated_at"`
+	ID                          types.String `tfsdk:"id"`
+	InstallationID              types.String `tfsdk:"installation_id"`
+	TargetOrg                   types.String `tfsdk:"target_org"`
+	ClientID                    types.String `tfsdk:"client_id"`
+	AppSlug                     types.String `tfsdk:"app_slug"`
+	SelectedRepositories        types.Set    `tfsdk:"selected_repositories"`
+	RepositorySelection         types.String `tfsdk:"repository_selection"`
+	Events                      types.List   `tfsdk:"events"`
+	Permissions                 types.Map    `tfsdk:"permissions"`
+	RecreateOnPermissionsChange types.Bool   `tfsdk:"recreate_on_permissions_change"`
+	CreatedAt                   types.String `tfsdk:"created_at"`
+	UpdatedAt                   types.String `tfsdk:"updated_at"`
 }
 
 // Metadata returns the resource type name.
@@ -116,6 +119,12 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 				MarkdownDescription: "The permissions for the app installation.",
 				Computed:            true,
 				ElementType:         types.StringType,
+			},
+			"recreate_on_permissions_change": schema.BoolAttribute{
+				MarkdownDescription: "Whether to automatically recreate the app installation when requested permissions change on the GitHub App definition. Defaults to `false`. When `false`, Terraform tracks active installed permissions and expects an Organization Owner to accept pending permission requests via GitHub UI. When `true`, Terraform forces resource replacement (uninstall and reinstall), creating a new `installation_id` with the updated permissions applied immediately.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"created_at": schema.StringAttribute{
 				Computed:            true,
@@ -305,7 +314,7 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	// Map response body to state
+	// Map response body (active installed permissions) to state
 	permissionsVal := flattenPermissions(ctx, foundInstallation.GetPermissions(), &resp.Diagnostics)
 
 	eventsVal, errDiags := types.ListValueFrom(ctx, types.StringType, foundInstallation.GetEvents())
@@ -333,6 +342,10 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 	state.SelectedRepositories = selectedReposVal
+
+	if !isKnown(state.RecreateOnPermissionsChange) {
+		state.RecreateOnPermissionsChange = types.BoolValue(false)
+	}
 
 	// Save updated state
 	diags = resp.State.Set(ctx, &state)
@@ -445,4 +458,60 @@ func (r *installationResource) Delete(ctx context.Context, req resource.DeleteRe
 // ImportState handles the import of an existing resource. Expects <id> in the format <org>/<installation_id>.
 func (r *installationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// ModifyPlan handles custom plan modifications, forcing resource replacement if App definition permissions differ from installed permissions
+// AND recreate_on_permissions_change is set to true.
+func (r *installationResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip during resource creation or deletion
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var planModel installationResourceModel
+	diags := req.Plan.Get(ctx, &planModel)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Only trigger resource replacement if recreate_on_permissions_change is true
+	if !isKnown(planModel.RecreateOnPermissionsChange) || !planModel.RecreateOnPermissionsChange.ValueBool() {
+		return
+	}
+
+	var stateModel installationResourceModel
+	diags = req.State.Get(ctx, &stateModel)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	appSlug := stateModel.AppSlug.ValueString()
+	if appSlug == "" || r.client == nil || r.client.Client == nil {
+		return
+	}
+
+	// Fetch GitHub App definition permissions
+	app, _, err := r.client.Client.Apps.Get(ctx, appSlug)
+	if err != nil {
+		tflog.Warn(ctx, "Failed to fetch GitHub App definition in ModifyPlan", map[string]interface{}{
+			"app_slug": appSlug,
+			"error":    err.Error(),
+		})
+		return
+	}
+
+	appPermissionsVal := flattenPermissions(ctx, app.GetPermissions(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Compare active installed permissions (from state) with App definition permissions
+	if isKnown(stateModel.Permissions) && isKnown(appPermissionsVal) {
+		if !stateModel.Permissions.Equal(appPermissionsVal) {
+			resp.Plan.SetAttribute(ctx, path.Root("permissions"), appPermissionsVal)
+			resp.RequiresReplace = path.Paths{path.Root("permissions")}
+		}
+	}
 }
