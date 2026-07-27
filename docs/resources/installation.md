@@ -97,7 +97,11 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
+# Copyright 2026 Google LLC
+# SPDX-License-Identifier: MPL-2.0
+
 # Installations can be imported using the composite ID (<target_org>/<installation_id>).
+
 #
 # Because `target_org` and `client_id` are required fields in the resource schema, your `.tf` resource
 # configuration block must contain matching `target_org` and `client_id` values after importing so that
