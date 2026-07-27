@@ -77,6 +77,7 @@ output "installation" {
 
 ### Optional
 
+- `etag` (String) The ETag header received from GitHub API for conditional request caching.
 - `repository_selection` (String) The type of repository selection for the app installation. Either set to 'all' or 'selected'.
 - `selected_repositories` (Set of String) The list of repository names the installation has access to. Only valid and required when repository_selection is set to 'selected'.
 

@@ -114,7 +114,7 @@ func newRetryableHTTPClient() *http.Client {
 		return retryablehttp.DefaultRetryPolicy(ctx, resp, err)
 	}
 
-	retryClient.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+	retryClient.Backoff = func(minWait, maxWait time.Duration, attemptNum int, resp *http.Response) time.Duration {
 		if resp != nil {
 			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
 				if seconds, parseErr := strconv.Atoi(retryAfter); parseErr == nil && seconds > 0 {
@@ -122,7 +122,7 @@ func newRetryableHTTPClient() *http.Client {
 				}
 			}
 		}
-		return retryablehttp.DefaultBackoff(min, max, attemptNum, resp)
+		return retryablehttp.DefaultBackoff(minWait, maxWait, attemptNum, resp)
 	}
 
 	stdClient := retryClient.StandardClient()
@@ -187,7 +187,6 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg, et
 			var ghErr *github.ErrorResponse
 			if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotModified {
 				result.StatusCode = http.StatusNotModified
-				err = nil
 			} else {
 				return OrgListResult{}, err
 			}
@@ -213,7 +212,12 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg, et
 	if err != nil {
 		return OrgListResult{}, err
 	}
-	return res.(OrgListResult), nil
+
+	orgResult, ok := res.(OrgListResult)
+	if !ok {
+		return OrgListResult{}, fmt.Errorf("unexpected result type from singleflight: %T", res)
+	}
+	return orgResult, nil
 }
 
 func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
