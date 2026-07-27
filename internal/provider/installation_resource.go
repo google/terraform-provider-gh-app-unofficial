@@ -129,8 +129,10 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 			},
 			"etag": schema.StringAttribute{
 				Computed:            true,
-				Optional:            true,
 				MarkdownDescription: "The ETag header received from GitHub API for conditional request caching.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
