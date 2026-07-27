@@ -130,9 +130,6 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 			"etag": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The ETag header received from GitHub API for conditional request caching.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 		},
 	}
@@ -232,7 +229,7 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 		Repositories:        selectedRepos,
 	}
 
-	installation, _, err := client.Enterprise.InstallApp(ctx, enterpriseSlug, targetOrg, ghReq)
+	installation, ghResp, err := client.Enterprise.InstallApp(ctx, enterpriseSlug, targetOrg, ghReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to install app", err.Error())
 		return
@@ -257,6 +254,11 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	plan.Events = eventsVal
 	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().Format(time.RFC3339))
 	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().Format(time.RFC3339))
+	if ghResp != nil && ghResp.Header.Get("ETag") != "" {
+		plan.ETag = types.StringValue(ghResp.Header.Get("ETag"))
+	} else {
+		plan.ETag = types.StringNull()
+	}
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, &plan)
@@ -400,7 +402,7 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 		Repositories:        selectedRepos,
 	}
 
-	installation, _, err := client.Enterprise.UpdateAppInstallationRepositories(ctx, enterpriseSlug, targetOrg, instID, opts)
+	installation, ghResp, err := client.Enterprise.UpdateAppInstallationRepositories(ctx, enterpriseSlug, targetOrg, instID, opts)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update app installation repositories", err.Error())
 		return
@@ -430,6 +432,11 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 	plan.Events = eventsVal
 	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().Format(time.RFC3339))
 	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().Format(time.RFC3339))
+	if ghResp != nil && ghResp.Header.Get("ETag") != "" {
+		plan.ETag = types.StringValue(ghResp.Header.Get("ETag"))
+	} else {
+		plan.ETag = types.StringNull()
+	}
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, &plan)

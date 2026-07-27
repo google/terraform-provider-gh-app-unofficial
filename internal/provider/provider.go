@@ -155,6 +155,7 @@ const defaultCacheTTL = 5 * time.Second
 func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg, etag string) (OrgListResult, error) {
 	cacheKey := fmt.Sprintf("%s:%s", targetOrg, etag)
 
+	// 1. Return cached response if within TTL
 	c.cacheMu.RLock()
 	if cached, ok := c.cache[cacheKey]; ok && time.Since(cached.fetchedAt) < defaultCacheTTL {
 		c.cacheMu.RUnlock()
@@ -162,14 +163,8 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg, et
 	}
 	c.cacheMu.RUnlock()
 
+	// 2. Coalesce concurrent in-flight requests for the same org + etag key
 	res, err, _ := c.sfGroup.Do(cacheKey, func() (interface{}, error) {
-		c.cacheMu.RLock()
-		if cached, ok := c.cache[cacheKey]; ok && time.Since(cached.fetchedAt) < defaultCacheTTL {
-			c.cacheMu.RUnlock()
-			return cached.result, nil
-		}
-		c.cacheMu.RUnlock()
-
 		reqCtx := ctx
 		if etag != "" {
 			reqCtx = context.WithValue(ctx, ctxEtagKey, etag)
@@ -177,7 +172,7 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg, et
 
 		installations, resp, err := listAllAppInstallationsRaw(reqCtx, c.Client, c.EnterpriseSlug, targetOrg)
 
-		result := OrgListResult{}
+		result := OrgListResult{Installations: installations}
 		if resp != nil {
 			result.StatusCode = resp.StatusCode
 			result.ETag = resp.Header.Get("ETag")
@@ -190,11 +185,7 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg, et
 			} else {
 				return OrgListResult{}, err
 			}
-		} else if result.StatusCode == 0 && resp != nil {
-			result.StatusCode = resp.StatusCode
 		}
-
-		result.Installations = installations
 
 		c.cacheMu.Lock()
 		if c.cache == nil {
