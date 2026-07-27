@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/google/go-github/v88/github"
@@ -47,6 +48,7 @@ type installationResourceModel struct {
 	Permissions          types.Map    `tfsdk:"permissions"`
 	CreatedAt            types.String `tfsdk:"created_at"`
 	UpdatedAt            types.String `tfsdk:"updated_at"`
+	ETag                 types.String `tfsdk:"etag"`
 }
 
 // Metadata returns the resource type name.
@@ -124,6 +126,11 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 			"updated_at": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The update timestamp of the app installation.",
+			},
+			"etag": schema.StringAttribute{
+				Computed:            true,
+				Optional:            true,
+				MarkdownDescription: "The ETag header received from GitHub API for conditional request caching.",
 			},
 		},
 	}
@@ -281,8 +288,13 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	// List installations for the organization
-	installations, err := listAllAppInstallations(ctx, client, enterpriseSlug, targetOrg)
+	currentETag := ""
+	if isKnown(state.ETag) {
+		currentETag = state.ETag.ValueString()
+	}
+
+	// List installations for the organization using cached singleflight client
+	res, err := r.client.ListAppInstallationsCached(ctx, targetOrg, currentETag)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading GitHub App Installations",
@@ -290,6 +302,16 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 		)
 		return
 	}
+
+	if res.StatusCode == http.StatusNotModified {
+		tflog.Info(ctx, "HTTP 304 Not Modified received for installation list, keeping state unchanged", map[string]interface{}{
+			"target_org": targetOrg,
+			"etag":       currentETag,
+		})
+		return
+	}
+
+	installations := res.Installations
 
 	var foundInstallation *github.Installation
 	for _, inst := range installations {
@@ -325,6 +347,9 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	state.CreatedAt = types.StringValue(foundInstallation.GetCreatedAt().Format(time.RFC3339))
 	state.UpdatedAt = types.StringValue(foundInstallation.GetUpdatedAt().Format(time.RFC3339))
 	state.ClientID = types.StringValue(foundInstallation.GetClientID())
+	if res.ETag != "" {
+		state.ETag = types.StringValue(res.ETag)
+	}
 
 	// Update selected repositories if selection is "selected"
 	selectedReposVal := getSelectedRepositories(ctx, client, enterpriseSlug, targetOrg, foundInstallation.GetID(), foundInstallation.GetRepositorySelection(), &resp.Diagnostics)

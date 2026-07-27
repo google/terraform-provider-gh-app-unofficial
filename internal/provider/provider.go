@@ -6,17 +6,23 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
+	"strconv"
+	"sync"
+	"time"
 
+	"github.com/google/go-github/v88/github"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-
-	"github.com/google/go-github/v88/github"
+	"golang.org/x/sync/singleflight"
 )
 
 // Ensure GHAppProvider satisfies various provider interfaces.
@@ -69,9 +75,145 @@ type ghProviderModel struct {
 	BaseURL        types.String `tfsdk:"base_url"`
 }
 
+type ctxEtagKeyType struct{}
+
+var ctxEtagKey = ctxEtagKeyType{}
+
+type etagTransport struct {
+	transport http.RoundTripper
+}
+
+func (t *etagTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if etag, ok := req.Context().Value(ctxEtagKey).(string); ok && etag != "" {
+		req.Header.Set("If-None-Match", etag)
+	}
+	baseTransport := t.transport
+	if baseTransport == nil {
+		baseTransport = http.DefaultTransport
+	}
+	return baseTransport.RoundTrip(req)
+}
+
+func newRetryableHTTPClient() *http.Client {
+	retryClient := retryablehttp.NewClient()
+	retryClient.RetryMax = 3
+	retryClient.RetryWaitMin = 1 * time.Second
+	retryClient.RetryWaitMax = 30 * time.Second
+
+	retryClient.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {
+		if resp != nil {
+			if resp.StatusCode == http.StatusTooManyRequests {
+				return true, nil
+			}
+			if resp.StatusCode == http.StatusForbidden {
+				if resp.Header.Get("Retry-After") != "" || resp.Header.Get("X-RateLimit-Remaining") == "0" {
+					return true, nil
+				}
+			}
+		}
+		return retryablehttp.DefaultRetryPolicy(ctx, resp, err)
+	}
+
+	retryClient.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+		if resp != nil {
+			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
+				if seconds, parseErr := strconv.Atoi(retryAfter); parseErr == nil && seconds > 0 {
+					return time.Duration(seconds) * time.Second
+				}
+			}
+		}
+		return retryablehttp.DefaultBackoff(min, max, attemptNum, resp)
+	}
+
+	stdClient := retryClient.StandardClient()
+	stdClient.Transport = &etagTransport{transport: stdClient.Transport}
+	return stdClient
+}
+
+type OrgListResult struct {
+	Installations []*github.Installation
+	ETag          string
+	StatusCode    int
+}
+
+type cachedOrgList struct {
+	result    OrgListResult
+	fetchedAt time.Time
+}
+
 type GHClient struct {
 	EnterpriseSlug string
 	Client         *github.Client
+
+	cacheMu sync.RWMutex
+	cache   map[string]cachedOrgList
+	sfGroup singleflight.Group
+}
+
+const defaultCacheTTL = 5 * time.Second
+
+func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg, etag string) (OrgListResult, error) {
+	cacheKey := fmt.Sprintf("%s:%s", targetOrg, etag)
+
+	c.cacheMu.RLock()
+	if cached, ok := c.cache[cacheKey]; ok && time.Since(cached.fetchedAt) < defaultCacheTTL {
+		c.cacheMu.RUnlock()
+		return cached.result, nil
+	}
+	c.cacheMu.RUnlock()
+
+	res, err, _ := c.sfGroup.Do(cacheKey, func() (interface{}, error) {
+		c.cacheMu.RLock()
+		if cached, ok := c.cache[cacheKey]; ok && time.Since(cached.fetchedAt) < defaultCacheTTL {
+			c.cacheMu.RUnlock()
+			return cached.result, nil
+		}
+		c.cacheMu.RUnlock()
+
+		reqCtx := ctx
+		if etag != "" {
+			reqCtx = context.WithValue(ctx, ctxEtagKey, etag)
+		}
+
+		installations, resp, err := listAllAppInstallationsRaw(reqCtx, c.Client, c.EnterpriseSlug, targetOrg)
+
+		result := OrgListResult{}
+		if resp != nil {
+			result.StatusCode = resp.StatusCode
+			result.ETag = resp.Header.Get("ETag")
+		}
+
+		if err != nil {
+			var ghErr *github.ErrorResponse
+			if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotModified {
+				result.StatusCode = http.StatusNotModified
+				err = nil
+			} else {
+				return OrgListResult{}, err
+			}
+		} else if result.StatusCode == 0 && resp != nil {
+			result.StatusCode = resp.StatusCode
+		}
+
+		result.Installations = installations
+
+		c.cacheMu.Lock()
+		if c.cache == nil {
+			c.cache = make(map[string]cachedOrgList)
+		}
+		c.cache[cacheKey] = cachedOrgList{
+			result:    result,
+			fetchedAt: time.Now(),
+		}
+		c.cacheMu.Unlock()
+
+		return result, nil
+	})
+
+	if err != nil {
+		return OrgListResult{}, err
+	}
+	return res.(OrgListResult), nil
 }
 
 func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
@@ -137,8 +279,10 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	})
 
 	// initialize the client
+	httpClient := newRetryableHTTPClient()
 	clientOpts := []github.ClientOptionsFunc{
 		github.WithAuthToken(token),
+		github.WithHTTPClient(httpClient),
 	}
 
 	if baseURL != "" {

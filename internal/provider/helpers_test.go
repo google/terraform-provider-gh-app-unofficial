@@ -12,7 +12,10 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-github/v88/github"
@@ -719,5 +722,96 @@ func TestListAllRepositoriesForOrgAppInstallation(t *testing.T) {
 				t.Errorf("expected %d repositories, got %d", tc.wantCount, len(got))
 			}
 		})
+	}
+}
+
+func TestListAppInstallationsCached_Singleflight(t *testing.T) {
+	t.Parallel()
+
+	var reqCount atomic.Int32
+	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		reqCount.Add(1)
+		time.Sleep(50 * time.Millisecond)
+		body := `[{"id":1,"app_slug":"app-1"}]`
+		header := make(http.Header)
+		header.Set("ETag", `"etag-123"`)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewBufferString(body)),
+			Header:     header,
+		}, nil
+	})
+
+	httpClient := &http.Client{Transport: rt}
+	ghClient, _ := github.NewClient(github.WithHTTPClient(httpClient))
+	client := &GHClient{
+		EnterpriseSlug: "my-ent",
+		Client:         ghClient,
+	}
+
+	ctx := context.Background()
+	const numGoroutines = 10
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			res, err := client.ListAppInstallationsCached(ctx, "my-org", "")
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if len(res.Installations) != 1 {
+				t.Errorf("expected 1 installation, got %d", len(res.Installations))
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if count := reqCount.Load(); count != 1 {
+		t.Errorf("expected exactly 1 HTTP request due to singleflight coalescing, got %d", count)
+	}
+}
+
+func TestListAppInstallationsCached_ETag304(t *testing.T) {
+	t.Parallel()
+
+	var receivedETag string
+	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		receivedETag = req.Header.Get("If-None-Match")
+		if receivedETag == `"etag-xyz"` {
+			return &http.Response{
+				StatusCode: http.StatusNotModified,
+				Body:       io.NopCloser(bytes.NewBufferString("")),
+				Header:     make(http.Header),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewBufferString(`[]`)),
+			Header:     make(http.Header),
+		}, nil
+	})
+
+	httpClient := &http.Client{Transport: &etagTransport{transport: rt}}
+	ghClient, _ := github.NewClient(github.WithHTTPClient(httpClient))
+	client := &GHClient{
+		EnterpriseSlug: "my-ent",
+		Client:         ghClient,
+	}
+
+	ctx := context.Background()
+	res, err := client.ListAppInstallationsCached(ctx, "my-org", `"etag-xyz"`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if res.StatusCode != http.StatusNotModified {
+		t.Errorf("expected StatusCode 304, got %d", res.StatusCode)
+	}
+
+	if receivedETag != `"etag-xyz"` {
+		t.Errorf("expected If-None-Match header %q, got %q", `"etag-xyz"`, receivedETag)
 	}
 }
