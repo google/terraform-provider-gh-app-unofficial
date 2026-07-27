@@ -23,7 +23,7 @@ To contribute to or debug the provider, ensure the following core tools are inst
 Acceptance testing (`make testacc` / CI) and interactive debugging (`dlv`) require credentials for **two distinct GitHub Apps** operating across a clear two-organization structure under a GitHub Enterprise Cloud or Server account (`GITHUB_ENTERPRISE_SLUG`).
 
 ### 2.1 The Two-Organization Structure (`org-a` vs. `org-b`)
-To cleanly verify organization installation lifecycles (`ghapp_installation`), our workflow separates the organization where the Target App is owned (`org-a`) from the target sandbox organization where the app is installed and tested (`org-b`):
+To cleanly verify organization installation lifecycles (`gh-app-unofficial_installation`), our workflow separates the organization where the Target App is owned (`org-a`) from the target sandbox organization where the app is installed and tested (`org-b`):
 - **`org-a` (App Owner Organization, e.g., `app-owner-org`):** The organization where the **Target App** (`GITHUB_APP_CLIENT_ID`) is registered and owned.
 - **`org-b` (Target Installation Organization, e.g., `target-org` / `GITHUB_TARGET_ORG`):** The dedicated static sandbox organization where the **Target App** is installed, updated, and uninstalled by our Terraform provider, and where our static fixture repositories (`test-repo-1`, `test-repo-2`) reside.
 
@@ -33,17 +33,20 @@ graph LR
         T_APP["Target App<br/>(GITHUB_APP_CLIENT_ID)"]
     end
 
+    subgraph ENT ["GitHub Enterprise"]
+        M_INST["Manager App Installation<br/>(GITHUB_APP_INSTALLATION_ID)"]
+    end
+
     subgraph ORG_B ["org-b (Target Installation Org: e.g. target-org)"]
-        INST["ghapp_installation<br/>(Managed by Terraform)"]
+        INST["gh-app-unofficial_installation<br/>(Managed by Terraform)"]
         TR1["test-repo-1"]
         TR2["test-repo-2"]
-        M_INST["Manager App Installation<br/>(GITHUB_APP_INSTALLATION_ID)"]
     end
 
     T_APP -->|"Installed & Managed on org-b"| INST
     INST -->|"Repository Selection"| TR1
     INST -->|"Repository Selection"| TR2
-    M_INST -->|"Generates GITHUB_TOKEN<br/>via cmd/get-token"| INST
+    M_INST -->|"Authorizes Terraform / GITHUB_TOKEN<br/>to manage installations"| INST
 ```
 
 ### 2.2 Pre-Provisioning `org-b` (`target-org`)
@@ -51,26 +54,29 @@ Inside **`org-b` (`GITHUB_TARGET_ORG`)**, create two permanent test repositories
 - `test-repo-1`
 - `test-repo-2`
 
-### 2.3 The Manager App (Authentication & Sweeping Token Provider)
-The Manager App is used by `cmd/get-token` (`POST /app/installations/{id}/access_tokens`) to dynamically mint access tokens (`GITHUB_TOKEN`), granting Terraform permission to install, update, and uninstall app installations inside `org-b` (`target-org`).
+### 2.3 The Manager App (Enterprise Installation Manager)
+The Manager App is an enterprise-scoped GitHub App configured with `Enterprise Organization Installations: Read & write` permissions. It grants Terraform the administrative authority required to install, update, and uninstall target GitHub Apps on organizations (`org-b`) across the enterprise.
 
-1. Navigate to your GitHub Enterprise or Organization Settings -> **GitHub Apps** -> **New GitHub App**.
+During local acceptance testing (`make testacc`) and debugging (`dlv`), `cmd/get-token` serves as a convenience utility that exchanges the Manager App's credentials for an installation access token (`GITHUB_TOKEN`). (Note that obtaining the token via `cmd/get-token` is optional; any valid token with enterprise installation management permissions can be used.)
+
+1. Navigate to your GitHub Enterprise Settings -> **GitHub Apps** -> **New GitHub App**.
 2. Set up required permissions:
-   - **Organization Administration**: `Read & write`.
-   - **App / Repository Administration**: `Read & write`.
+   - **Enterprise Permissions** -> **Enterprise Organization Installations**: `Read & write`.
 3. Generate and download a Private Key (`.pem` file).
-4. Install the Manager App onto **`org-b` (`target-org`)** (or at the Enterprise level). Ensure the Manager App installation is granted access to the test repositories inside `org-b` (e.g. by selecting **All repositories** or selecting your test repositories like `test-repo-1` and `test-repo-2`).
+4. Install the Manager App at the **Enterprise level** (under Enterprise Settings -> Installed GitHub Apps) so its access token is authorized for `/enterprises/{enterprise}/...` API endpoints.
 5. Record:
    - `GITHUB_APP_ID`: The numeric App Client ID / Issuer ID of the Manager App.
    - `GITHUB_APP_PRIVATE_KEY_PATH`: Full file path to the downloaded private key file (e.g. `~/keys/manager.pem` or `manager.pem`), including the filename.
-   - `GITHUB_APP_INSTALLATION_ID`: The numeric ID of the Manager App's installation targeting `org-b` (`target-org`).
+   - `GITHUB_APP_INSTALLATION_ID`: The numeric ID of the Manager App's installation at the Enterprise level.
 
 ### 2.4 The Target App (`org-a`)
-The Target App is the child application owned inside `org-a` (`app-owner-org`) whose installations on `org-b` (`target-org`) are created, updated, and deleted by Terraform (`ghapp_installation`) during acceptance tests or debugging sessions.
+The Target App is the child application owned inside `org-a` (`app-owner-org`) whose installations on `org-b` (`target-org`) are created, updated, and deleted by Terraform (`gh-app-unofficial_installation`) during acceptance tests or debugging sessions.
 
 1. Create a GitHub App inside **`org-a` (`app-owner-org`)**.
-2. Ensure the app settings allow installation on other organizations (or any organization within your enterprise).
-3. Record its Client ID (`GITHUB_APP_CLIENT_ID`).
+2. Set up required permissions:
+   - **Repository Permissions** -> **Metadata**: `Read-only` (mandatory default permission for GitHub Apps).
+3. Ensure the app settings allow installation on other organizations (or any organization within your enterprise).
+4. Record its Client ID (`GITHUB_APP_CLIENT_ID`).
 
 ---
 
@@ -85,7 +91,7 @@ GITHUB_APP_PRIVATE_KEY_PATH="~/keys/manager.pem"
 GITHUB_APP_INSTALLATION_ID="135885315"
 
 # Target example directory for debugging
-TF_EXAMPLE_DIR="examples/resources/ghapp_installation"
+TF_EXAMPLE_DIR="examples/resources/gh-app-unofficial_installation"
 
 # Unified variables used seamlessly across both VS Code debugging (dlv) and make testacc
 TF_VAR_enterprise_slug="my-test-enterprise"
@@ -106,7 +112,7 @@ Both local interactive debugging (`dlv` / VS Code `F5`) and automated acceptance
 
 | Category | Manual Debugging & Dev Mode (`dlv` / VS Code F5) | Automated Acceptance Testing (`make testacc` / CI) |
 | :--- | :--- | :--- |
-| **Purpose** | Interactive development, attaching breakpoints (`dlv`) to local HCL examples (`examples/resources/ghapp_installation`). | Automated, non-interactive CI/CD validation and regression testing against the static sandbox. |
+| **Purpose** | Interactive development, attaching breakpoints (`dlv`) to local HCL examples (`examples/resources/gh-app-unofficial_installation`). | Automated, non-interactive CI/CD validation and regression testing against the static sandbox. |
 | **Target Organization (`org-b`)** | Static dedicated organization (`TF_VAR_target_org` / `GITHUB_TARGET_ORG` in `.env`). | Static dedicated organization (`GITHUB_TARGET_ORG`). Pre-check verifies required environment variables are configured. |
 | **App Authentication** | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` in `.env` to authenticate. | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` via `cmd/get-token`. |
 | **HCL Input Variables** | Uses `TF_VAR_enterprise_slug`, `TF_VAR_target_org`, `TF_VAR_client_id`, and `TF_EXAMPLE_DIR`. | Controlled entirely by Go test strings (`testAccConfig`); ignores `TF_VAR_*` variables. |
@@ -170,3 +176,15 @@ If rotating to new organizations or renewing an enterprise trial:
 3. Inside `org-b` (`target-org`), initialize two repositories (`test-repo-1` and `test-repo-2`).
 4. Install the Manager App (`GITHUB_APP_ID`) onto `org-b` (`target-org`) with App/Org administration permissions and note its Installation ID (`GITHUB_APP_INSTALLATION_ID`).
 5. Update `.env` locally or GitHub Actions Repository Secrets/Variables (`GH_APP_ID`, `GH_APP_INSTALLATION_ID`, `GH_APP_CLIENT_ID`, `GH_APP_TEST_ENTERPRISE`, `GH_APP_TEST_ORG`, `GH_APP_PRIVATE_KEY`).
+
+## 8. Binary Release & Installation Guide
+
+### 8.1 Releasing a New Version
+To release a new binary version of the provider:
+1. Ensure `main` branch is up to date and passing tests.
+2. Create and push a semantic tag:
+   ```shell
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+3. GitHub Actions will trigger .github/workflows/release.yml, verify that the tag belongs to main, cross-compile provider binaries for Linux, macOS, and Windows, upload them to GitHub Releases, and generate SLSA build attestations.

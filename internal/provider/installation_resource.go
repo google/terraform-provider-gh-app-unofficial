@@ -279,7 +279,7 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	}
 
 	// List installations for the organization
-	installations, _, err := client.Enterprise.ListAppInstallations(ctx, enterpriseSlug, targetOrg, nil)
+	installations, err := listAllAppInstallations(ctx, client, enterpriseSlug, targetOrg)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading GitHub App Installations",
