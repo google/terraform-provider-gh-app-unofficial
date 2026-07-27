@@ -493,7 +493,8 @@ func (r *installationResource) ModifyPlan(ctx context.Context, req resource.Modi
 	}
 
 	// Fetch GitHub App definition permissions
-	app, _, err := r.client.Client.Apps.Get(ctx, appSlug)
+	client := r.client.Client
+	app, _, err := client.Apps.Get(ctx, appSlug)
 	if err != nil {
 		tflog.Warn(ctx, "Failed to fetch GitHub App definition in ModifyPlan", map[string]interface{}{
 			"app_slug": appSlug,
