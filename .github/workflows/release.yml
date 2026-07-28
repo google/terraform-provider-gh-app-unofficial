@@ -1,4 +1,9 @@
+# Copyright 2026 Google LLC
+# Copyright IBM Corp. 2021, 2025
+# SPDX-License-Identifier: MPL-2.0
+
 # Terraform Provider release workflow with GitHub Build Attestations.
+
 name: Release
 
 on:
@@ -17,14 +22,15 @@ jobs:
       id-token: write      # Required for GitHub Attestations (Sigstore OIDC)
       attestations: write  # Required to record build attestations
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
-          cache: true
+          cache: false
 
       - name: Validate Tag is on Default Branch (main)
         run: |

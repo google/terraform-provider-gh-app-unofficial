@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2026 Google LLC
+# SPDX-License-Identifier: MPL-2.0
 
 set -e
+
 
 # Load environment variables from .env file if it exists
 if [ -f .env ]; then
