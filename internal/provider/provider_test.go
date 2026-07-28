@@ -138,7 +138,7 @@ func TestProvider_Unit_MetadataAndFactories(t *testing.T) {
 
 	var metaResp provider.MetadataResponse
 	p.Metadata(ctx, provider.MetadataRequest{}, &metaResp)
-	if got, want := metaResp.TypeName, "ghapp"; got != want {
+	if got, want := metaResp.TypeName, "gh-app-unofficial"; got != want {
 		t.Errorf("Metadata() TypeName = %q, want %q", got, want)
 	}
 	if got, want := metaResp.Version, "1.0.0"; got != want {

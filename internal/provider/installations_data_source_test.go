@@ -251,7 +251,8 @@ func TestInstallationsDataSource_Unit_Read(t *testing.T) {
 				TargetOrg: types.StringValue("test-org"),
 				Installations: []app{
 					{
-						ID:                   types.StringValue("12345"),
+						ID:                   types.StringValue("test-org/12345"),
+						InstallationID:       types.StringValue("12345"),
 						ClientID:             types.StringValue(""),
 						AppSlug:              types.StringValue("test-app"),
 						SelectedRepositories: types.SetNull(types.StringType),
