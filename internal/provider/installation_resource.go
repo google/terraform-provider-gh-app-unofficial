@@ -6,7 +6,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/google/go-github/v88/github"
@@ -48,7 +47,6 @@ type installationResourceModel struct {
 	Permissions          types.Map    `tfsdk:"permissions"`
 	CreatedAt            types.String `tfsdk:"created_at"`
 	UpdatedAt            types.String `tfsdk:"updated_at"`
-	ETag                 types.String `tfsdk:"etag"`
 }
 
 // Metadata returns the resource type name.
@@ -126,10 +124,6 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 			"updated_at": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The update timestamp of the app installation.",
-			},
-			"etag": schema.StringAttribute{
-				Computed:            true,
-				MarkdownDescription: "The ETag header received from GitHub API for conditional request caching.",
 			},
 		},
 	}
@@ -229,7 +223,7 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 		Repositories:        selectedRepos,
 	}
 
-	installation, ghResp, err := client.Enterprise.InstallApp(ctx, enterpriseSlug, targetOrg, ghReq)
+	installation, _, err := client.Enterprise.InstallApp(ctx, enterpriseSlug, targetOrg, ghReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to install app", err.Error())
 		return
@@ -245,6 +239,9 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
+	r.client.InvalidateOrgCache(targetOrg)
+	time.Sleep(1 * time.Second)
+
 	instIDStr := fmt.Sprintf("%d", installation.GetID())
 	plan.ID = types.StringValue(fmt.Sprintf("%s/%s", targetOrg, instIDStr))
 	plan.InstallationID = types.StringValue(instIDStr)
@@ -254,11 +251,6 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 	plan.Events = eventsVal
 	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().Format(time.RFC3339))
 	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().Format(time.RFC3339))
-	if ghResp != nil && ghResp.Header.Get("ETag") != "" {
-		plan.ETag = types.StringValue(ghResp.Header.Get("ETag"))
-	} else {
-		plan.ETag = types.StringNull()
-	}
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, &plan)
@@ -292,13 +284,8 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	currentETag := ""
-	if isKnown(state.ETag) {
-		currentETag = state.ETag.ValueString()
-	}
-
 	// List installations for the organization using cached singleflight client
-	res, err := r.client.ListAppInstallationsCached(ctx, targetOrg, currentETag)
+	installations, err := r.client.ListAppInstallationsCached(ctx, targetOrg)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading GitHub App Installations",
@@ -306,16 +293,6 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 		)
 		return
 	}
-
-	if res.StatusCode == http.StatusNotModified {
-		tflog.Info(ctx, "HTTP 304 Not Modified received for installation list, keeping state unchanged", map[string]interface{}{
-			"target_org": targetOrg,
-			"etag":       currentETag,
-		})
-		return
-	}
-
-	installations := res.Installations
 
 	var foundInstallation *github.Installation
 	for _, inst := range installations {
@@ -351,9 +328,6 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	state.CreatedAt = types.StringValue(foundInstallation.GetCreatedAt().Format(time.RFC3339))
 	state.UpdatedAt = types.StringValue(foundInstallation.GetUpdatedAt().Format(time.RFC3339))
 	state.ClientID = types.StringValue(foundInstallation.GetClientID())
-	if res.ETag != "" {
-		state.ETag = types.StringValue(res.ETag)
-	}
 
 	// Update selected repositories if selection is "selected"
 	selectedReposVal := getSelectedRepositories(ctx, client, enterpriseSlug, targetOrg, foundInstallation.GetID(), foundInstallation.GetRepositorySelection(), &resp.Diagnostics)
@@ -402,7 +376,7 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 		Repositories:        selectedRepos,
 	}
 
-	installation, ghResp, err := client.Enterprise.UpdateAppInstallationRepositories(ctx, enterpriseSlug, targetOrg, instID, opts)
+	installation, _, err := client.Enterprise.UpdateAppInstallationRepositories(ctx, enterpriseSlug, targetOrg, instID, opts)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update app installation repositories", err.Error())
 		return
@@ -423,6 +397,9 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
+	r.client.InvalidateOrgCache(targetOrg)
+	time.Sleep(1 * time.Second)
+
 	plan.ID = types.StringValue(fmt.Sprintf("%s/%d", targetOrg, instID))
 	plan.InstallationID = types.StringValue(fmt.Sprintf("%d", instID))
 	plan.TargetOrg = types.StringValue(targetOrg)
@@ -432,11 +409,6 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 	plan.Events = eventsVal
 	plan.CreatedAt = types.StringValue(installation.GetCreatedAt().Format(time.RFC3339))
 	plan.UpdatedAt = types.StringValue(installation.GetUpdatedAt().Format(time.RFC3339))
-	if ghResp != nil && ghResp.Header.Get("ETag") != "" {
-		plan.ETag = types.StringValue(ghResp.Header.Get("ETag"))
-	} else {
-		plan.ETag = types.StringNull()
-	}
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, &plan)
@@ -474,6 +446,9 @@ func (r *installationResource) Delete(ctx context.Context, req resource.DeleteRe
 		resp.Diagnostics.AddError("Failed to uninstall app", err.Error())
 		return
 	}
+
+	r.client.InvalidateOrgCache(targetOrg)
+	time.Sleep(1 * time.Second)
 }
 
 // ImportState handles the import of an existing resource. Expects <id> in the format <org>/<installation_id>.

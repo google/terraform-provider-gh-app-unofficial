@@ -99,7 +99,7 @@ func TestAccInstallationResource(t *testing.T) {
 				ResourceName:            "gh-app-unofficial_installation.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"updated_at", "etag"},
+				ImportStateVerifyIgnore: []string{"updated_at"},
 			},
 			// Step 4: Update - Repository Swap (to "test-repo-2")
 			{

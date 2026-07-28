@@ -122,6 +122,14 @@ func newRetryableHTTPClient() *http.Client {
 					return time.Duration(seconds) * time.Second
 				}
 			}
+			if reset := resp.Header.Get("X-RateLimit-Reset"); reset != "" {
+				if resetUnix, parseErr := strconv.ParseInt(reset, 10, 64); parseErr == nil {
+					wait := time.Until(time.Unix(resetUnix, 0))
+					if wait > 0 && wait <= maxWait {
+						return wait
+					}
+				}
+			}
 		}
 		return retryablehttp.DefaultBackoff(minWait, maxWait, attemptNum, resp)
 	}
@@ -131,15 +139,10 @@ func newRetryableHTTPClient() *http.Client {
 	return stdClient
 }
 
-type OrgListResult struct {
-	Installations []*github.Installation
-	ETag          string
-	StatusCode    int
-}
-
 type cachedOrgList struct {
-	result    OrgListResult
-	fetchedAt time.Time
+	installations []*github.Installation
+	etag          string
+	fetchedAt     time.Time
 }
 
 type GHClient struct {
@@ -153,92 +156,79 @@ type GHClient struct {
 
 const defaultCacheTTL = 5 * time.Second
 
-func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg, etag string) (OrgListResult, error) {
-	cacheKey := targetOrg
-
-	// 1. Return cached response if within TTL
+func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg string) ([]*github.Installation, error) {
+	// 1. Return in-memory cached list if within 5s TTL
 	c.cacheMu.RLock()
-	cached, hasCache := c.cache[cacheKey]
+	cached, hasCache := c.cache[targetOrg]
 	if hasCache && time.Since(cached.fetchedAt) < defaultCacheTTL {
 		c.cacheMu.RUnlock()
-		res := cached.result
-		if etag != "" && etag == res.ETag {
-			res.StatusCode = http.StatusNotModified
-		} else {
-			res.StatusCode = http.StatusOK
-		}
-		return res, nil
+		return cached.installations, nil
 	}
 	c.cacheMu.RUnlock()
 
-	// 2. Coalesce concurrent in-flight requests for targetOrg
-	resVal, err, _ := c.sfGroup.Do(cacheKey, func() (interface{}, error) {
+	// 2. Coalesce concurrent requests & send in-memory ETag for conditional GET
+	resVal, err, _ := c.sfGroup.Do(targetOrg, func() (interface{}, error) {
 		reqCtx := ctx
-		reqETag := etag
-		if reqETag == "" && hasCache {
-			reqETag = cached.result.ETag
-		}
-		if reqETag != "" {
-			reqCtx = context.WithValue(ctx, ctxEtagKey, reqETag)
+		if hasCache && cached.etag != "" {
+			reqCtx = context.WithValue(ctx, ctxEtagKey, cached.etag)
 		}
 
 		installations, resp, err := listAllAppInstallationsRaw(reqCtx, c.Client, c.EnterpriseSlug, targetOrg)
 
-		result := OrgListResult{Installations: installations}
-		if resp != nil {
-			result.StatusCode = resp.StatusCode
-			result.ETag = resp.Header.Get("ETag")
+		// 3. Handle 304 Not Modified (0 rate limit cost!)
+		var ghErr *github.ErrorResponse
+		if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotModified {
+			c.cacheMu.Lock()
+			c.cache[targetOrg] = cachedOrgList{
+				installations: cached.installations,
+				etag:          cached.etag,
+				fetchedAt:     time.Now(),
+			}
+			c.cacheMu.Unlock()
+			return cached.installations, nil
 		}
 
 		if err != nil {
-			var ghErr *github.ErrorResponse
-			if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotModified {
-				result.StatusCode = http.StatusNotModified
-				result.ETag = reqETag
-				if hasCache {
-					result.Installations = cached.result.Installations
-				}
-			} else {
-				return OrgListResult{}, err
-			}
+			return nil, err
+		}
+
+		newETag := ""
+		if resp != nil {
+			newETag = resp.Header.Get("ETag")
 		}
 
 		c.cacheMu.Lock()
 		if c.cache == nil {
 			c.cache = make(map[string]cachedOrgList)
 		}
-		c.cache[cacheKey] = cachedOrgList{
-			result:    result,
-			fetchedAt: time.Now(),
+		c.cache[targetOrg] = cachedOrgList{
+			installations: installations,
+			etag:          newETag,
+			fetchedAt:     time.Now(),
 		}
 		c.cacheMu.Unlock()
 
-		return result, nil
+		return installations, nil
 	})
 
 	if err != nil {
-		return OrgListResult{}, err
+		return nil, err
 	}
 
-	orgResult, ok := resVal.(OrgListResult)
+	instList, ok := resVal.([]*github.Installation)
 	if !ok {
-		return OrgListResult{}, fmt.Errorf("unexpected result type from singleflight: %T", resVal)
+		return nil, fmt.Errorf("unexpected result type from singleflight: %T", resVal)
 	}
 
-	if etag != "" && etag == orgResult.ETag {
-		orgResult.StatusCode = http.StatusNotModified
-		return orgResult, nil
-	}
+	return instList, nil
+}
 
-	if orgResult.StatusCode == http.StatusNotModified && len(orgResult.Installations) == 0 {
-		c.cacheMu.Lock()
-		delete(c.cache, cacheKey)
-		c.cacheMu.Unlock()
-		return c.ListAppInstallationsCached(ctx, targetOrg, "")
+func (c *GHClient) InvalidateOrgCache(targetOrg string) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	if c.cache != nil {
+		delete(c.cache, targetOrg)
 	}
-
-	orgResult.StatusCode = http.StatusOK
-	return orgResult, nil
 }
 
 func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {

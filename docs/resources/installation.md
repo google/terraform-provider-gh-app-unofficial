@@ -84,7 +84,6 @@ output "installation" {
 
 - `app_slug` (String) The slug of the app.
 - `created_at` (String) The creation timestamp of the app installation.
-- `etag` (String) The ETag header received from GitHub API for conditional request caching.
 - `events` (List of String) The events for the app installation.
 - `id` (String) The composite ID of the app installation in the format `<target_org>/<installation_id>`.
 - `installation_id` (String) The numeric ID of the app installation.
