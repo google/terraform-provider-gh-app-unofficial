@@ -47,7 +47,7 @@ type installationResourceModel struct {
 	RepositorySelection         types.String `tfsdk:"repository_selection"`
 	Events                      types.List   `tfsdk:"events"`
 	Permissions                 types.Map    `tfsdk:"permissions"`
-	RecreateOnPermissionsChange types.Bool   `tfsdk:"recreate_on_permissions_change"`
+	AutoAcceptPermissionDrift   types.Bool   `tfsdk:"auto_accept_permission_drift"`
 	CreatedAt                   types.String `tfsdk:"created_at"`
 	UpdatedAt                   types.String `tfsdk:"updated_at"`
 }
@@ -120,8 +120,8 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 				Computed:            true,
 				ElementType:         types.StringType,
 			},
-			"recreate_on_permissions_change": schema.BoolAttribute{
-				MarkdownDescription: "Whether to automatically recreate the app installation when requested permissions change on the GitHub App definition. Defaults to `false`. When `false`, Terraform tracks active installed permissions and expects an Organization Owner to accept pending permission requests via GitHub UI. When `true`, Terraform forces resource replacement (uninstall and reinstall), creating a new `installation_id` with the updated permissions applied immediately.",
+			"auto_accept_permission_drift": schema.BoolAttribute{
+				MarkdownDescription: "Whether to automatically accept permission changes (drift) on the GitHub App installation when requested permissions change on the GitHub App definition. Defaults to `false`. When `false`, Terraform tracks active installed permissions and expects an Organization Owner to accept pending permission requests via GitHub UI. When `true`, Terraform will detect permission changes on the app definition and automatically accept them by re-running the app installation API call during update.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
@@ -343,8 +343,8 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 	}
 	state.SelectedRepositories = selectedReposVal
 
-	if !isKnown(state.RecreateOnPermissionsChange) {
-		state.RecreateOnPermissionsChange = types.BoolValue(false)
+	if !isKnown(state.AutoAcceptPermissionDrift) {
+		state.AutoAcceptPermissionDrift = types.BoolValue(false)
 	}
 
 	// Save updated state
@@ -381,19 +381,35 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 		repoSelection = plan.RepositorySelection.ValueString()
 	}
 
-	opts := github.UpdateAppInstallationRepositoriesRequest{
-		RepositorySelection: &repoSelection,
-		Repositories:        selectedRepos,
-	}
+	var installation *github.Installation
 
-	installation, _, err := client.Enterprise.UpdateAppInstallationRepositories(ctx, enterpriseSlug, targetOrg, instID, opts)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to update app installation repositories", err.Error())
-		return
+	if isKnown(plan.AutoAcceptPermissionDrift) && plan.AutoAcceptPermissionDrift.ValueBool() {
+		ghReq := github.InstallAppRequest{
+			ClientID:            plan.ClientID.ValueString(),
+			RepositorySelection: repoSelection,
+			Repositories:        selectedRepos,
+		}
+
+		installation, _, err = client.Enterprise.InstallApp(ctx, enterpriseSlug, targetOrg, ghReq)
+		if err != nil {
+			resp.Diagnostics.AddError("Failed to auto-accept permission drift via app installation", err.Error())
+			return
+		}
+	} else {
+		opts := github.UpdateAppInstallationRepositoriesRequest{
+			RepositorySelection: &repoSelection,
+			Repositories:        selectedRepos,
+		}
+
+		installation, _, err = client.Enterprise.UpdateAppInstallationRepositories(ctx, enterpriseSlug, targetOrg, instID, opts)
+		if err != nil {
+			resp.Diagnostics.AddError("Failed to update app installation repositories", err.Error())
+			return
+		}
 	}
 
 	if installation == nil {
-		resp.Diagnostics.AddError("Failed to update app installation repositories", "Installation not found")
+		resp.Diagnostics.AddError("Failed to update app installation", "Installation not found")
 		return
 	}
 
@@ -460,8 +476,8 @@ func (r *installationResource) ImportState(ctx context.Context, req resource.Imp
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-// ModifyPlan handles custom plan modifications, forcing resource replacement if App definition permissions differ from installed permissions
-// AND recreate_on_permissions_change is set to true.
+// ModifyPlan handles custom plan modifications, updating plan permissions if App definition permissions differ from installed permissions
+// AND auto_accept_permission_drift is set to true.
 func (r *installationResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
 	// Skip during resource creation or deletion
 	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
@@ -475,15 +491,22 @@ func (r *installationResource) ModifyPlan(ctx context.Context, req resource.Modi
 		return
 	}
 
-	// Only trigger resource replacement if recreate_on_permissions_change is true
-	if !isKnown(planModel.RecreateOnPermissionsChange) || !planModel.RecreateOnPermissionsChange.ValueBool() {
-		return
-	}
-
 	var stateModel installationResourceModel
 	diags = req.State.Get(ctx, &stateModel)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Mark updated_at as unknown if any configured attribute is changing during update
+	if !planModel.SelectedRepositories.Equal(stateModel.SelectedRepositories) ||
+		!planModel.RepositorySelection.Equal(stateModel.RepositorySelection) ||
+		!planModel.AutoAcceptPermissionDrift.Equal(stateModel.AutoAcceptPermissionDrift) {
+		resp.Plan.SetAttribute(ctx, path.Root("updated_at"), types.StringUnknown())
+	}
+
+	// Only trigger permission update if auto_accept_permission_drift is true
+	if !isKnown(planModel.AutoAcceptPermissionDrift) || !planModel.AutoAcceptPermissionDrift.ValueBool() {
 		return
 	}
 
@@ -512,7 +535,8 @@ func (r *installationResource) ModifyPlan(ctx context.Context, req resource.Modi
 	if isKnown(stateModel.Permissions) && isKnown(appPermissionsVal) {
 		if !stateModel.Permissions.Equal(appPermissionsVal) {
 			resp.Plan.SetAttribute(ctx, path.Root("permissions"), appPermissionsVal)
-			resp.RequiresReplace = path.Paths{path.Root("permissions")}
+			resp.Plan.SetAttribute(ctx, path.Root("events"), types.ListUnknown(types.StringType))
+			resp.Plan.SetAttribute(ctx, path.Root("updated_at"), types.StringUnknown())
 		}
 	}
 }
