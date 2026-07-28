@@ -96,6 +96,7 @@ func (t *etagTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func newRetryableHTTPClient() *http.Client {
 	retryClient := retryablehttp.NewClient()
+	retryClient.Logger = nil
 	retryClient.RetryMax = 3
 	retryClient.RetryWaitMin = 1 * time.Second
 	retryClient.RetryWaitMax = 30 * time.Second
