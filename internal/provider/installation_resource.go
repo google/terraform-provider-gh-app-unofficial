@@ -38,18 +38,18 @@ type installationResource struct {
 
 // installationResourceModel describes the resource data model.
 type installationResourceModel struct {
-	ID                          types.String `tfsdk:"id"`
-	InstallationID              types.String `tfsdk:"installation_id"`
-	TargetOrg                   types.String `tfsdk:"target_org"`
-	ClientID                    types.String `tfsdk:"client_id"`
-	AppSlug                     types.String `tfsdk:"app_slug"`
-	SelectedRepositories        types.Set    `tfsdk:"selected_repositories"`
-	RepositorySelection         types.String `tfsdk:"repository_selection"`
-	Events                      types.List   `tfsdk:"events"`
-	Permissions                 types.Map    `tfsdk:"permissions"`
-	AutoAcceptPermissionDrift   types.Bool   `tfsdk:"auto_accept_permission_drift"`
-	CreatedAt                   types.String `tfsdk:"created_at"`
-	UpdatedAt                   types.String `tfsdk:"updated_at"`
+	ID                        types.String `tfsdk:"id"`
+	InstallationID            types.String `tfsdk:"installation_id"`
+	TargetOrg                 types.String `tfsdk:"target_org"`
+	ClientID                  types.String `tfsdk:"client_id"`
+	AppSlug                   types.String `tfsdk:"app_slug"`
+	SelectedRepositories      types.Set    `tfsdk:"selected_repositories"`
+	RepositorySelection       types.String `tfsdk:"repository_selection"`
+	Events                    types.List   `tfsdk:"events"`
+	Permissions               types.Map    `tfsdk:"permissions"`
+	AutoAcceptPermissionDrift types.Bool   `tfsdk:"auto_accept_permission_drift"`
+	CreatedAt                 types.String `tfsdk:"created_at"`
+	UpdatedAt                 types.String `tfsdk:"updated_at"`
 }
 
 // Metadata returns the resource type name.
