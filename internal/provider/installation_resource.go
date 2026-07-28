@@ -129,6 +129,9 @@ func (r *installationResource) Schema(_ context.Context, _ resource.SchemaReques
 			"created_at": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The creation timestamp of the app installation.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"updated_at": schema.StringAttribute{
 				Computed:            true,
@@ -381,8 +384,6 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 		repoSelection = plan.RepositorySelection.ValueString()
 	}
 
-	var installation *github.Installation
-
 	if isKnown(plan.AutoAcceptPermissionDrift) && plan.AutoAcceptPermissionDrift.ValueBool() {
 		ghReq := github.InstallAppRequest{
 			ClientID:            plan.ClientID.ValueString(),
@@ -390,22 +391,22 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 			Repositories:        selectedRepos,
 		}
 
-		installation, _, err = client.Enterprise.InstallApp(ctx, enterpriseSlug, targetOrg, ghReq)
+		_, _, err := client.Enterprise.InstallApp(ctx, enterpriseSlug, targetOrg, ghReq)
 		if err != nil {
 			resp.Diagnostics.AddError("Failed to auto-accept permission drift via app installation", err.Error())
 			return
 		}
-	} else {
-		opts := github.UpdateAppInstallationRepositoriesRequest{
-			RepositorySelection: &repoSelection,
-			Repositories:        selectedRepos,
-		}
+	}
 
-		installation, _, err = client.Enterprise.UpdateAppInstallationRepositories(ctx, enterpriseSlug, targetOrg, instID, opts)
-		if err != nil {
-			resp.Diagnostics.AddError("Failed to update app installation repositories", err.Error())
-			return
-		}
+	opts := github.UpdateAppInstallationRepositoriesRequest{
+		RepositorySelection: &repoSelection,
+		Repositories:        selectedRepos,
+	}
+
+	installation, _, err := client.Enterprise.UpdateAppInstallationRepositories(ctx, enterpriseSlug, targetOrg, instID, opts)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to update app installation repositories", err.Error())
+		return
 	}
 
 	if installation == nil {
