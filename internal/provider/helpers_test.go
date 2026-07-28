@@ -815,3 +815,59 @@ func TestListAppInstallationsCached_ETag304(t *testing.T) {
 		t.Errorf("expected If-None-Match header %q, got %q", `"etag-xyz"`, receivedETag)
 	}
 }
+
+func TestListAppInstallationsCached_DifferentETagsCoalesced(t *testing.T) {
+	t.Parallel()
+
+	var reqCount atomic.Int32
+	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		reqCount.Add(1)
+		time.Sleep(50 * time.Millisecond)
+		body := `[{"id":1,"app_slug":"app-1"}]`
+		header := make(http.Header)
+		header.Set("ETag", `"etag-latest"`)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewBufferString(body)),
+			Header:     header,
+		}, nil
+	})
+
+	httpClient := &http.Client{Transport: &etagTransport{transport: rt}}
+	ghClient, _ := github.NewClient(github.WithHTTPClient(httpClient))
+	client := &GHClient{
+		EnterpriseSlug: "my-ent",
+		Client:         ghClient,
+	}
+
+	ctx := context.Background()
+	etags := []string{`"etag-1"`, `"etag-2"`, `""`, `"etag-latest"`}
+	var wg sync.WaitGroup
+	wg.Add(len(etags))
+
+	for _, etagVal := range etags {
+		e := etagVal
+		go func() {
+			defer wg.Done()
+			res, err := client.ListAppInstallationsCached(ctx, "my-org", e)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if len(res.Installations) != 1 {
+				t.Errorf("expected 1 installation, got %d", len(res.Installations))
+			}
+			if e == `"etag-latest"` && res.StatusCode != http.StatusNotModified {
+				t.Errorf("expected 304 for matching etag, got %d", res.StatusCode)
+			}
+			if e != `"etag-latest"` && res.StatusCode != http.StatusOK {
+				t.Errorf("expected 200 for non-matching etag, got %d", res.StatusCode)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if count := reqCount.Load(); count != 1 {
+		t.Errorf("expected exactly 1 HTTP request due to targetOrg singleflight coalescing, got %d", count)
+	}
+}

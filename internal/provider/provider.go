@@ -154,21 +154,32 @@ type GHClient struct {
 const defaultCacheTTL = 5 * time.Second
 
 func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg, etag string) (OrgListResult, error) {
-	cacheKey := fmt.Sprintf("%s:%s", targetOrg, etag)
+	cacheKey := targetOrg
 
 	// 1. Return cached response if within TTL
 	c.cacheMu.RLock()
-	if cached, ok := c.cache[cacheKey]; ok && time.Since(cached.fetchedAt) < defaultCacheTTL {
+	cached, hasCache := c.cache[cacheKey]
+	if hasCache && time.Since(cached.fetchedAt) < defaultCacheTTL {
 		c.cacheMu.RUnlock()
-		return cached.result, nil
+		res := cached.result
+		if etag != "" && etag == res.ETag {
+			res.StatusCode = http.StatusNotModified
+		} else {
+			res.StatusCode = http.StatusOK
+		}
+		return res, nil
 	}
 	c.cacheMu.RUnlock()
 
-	// 2. Coalesce concurrent in-flight requests for the same org + etag key
-	res, err, _ := c.sfGroup.Do(cacheKey, func() (interface{}, error) {
+	// 2. Coalesce concurrent in-flight requests for targetOrg
+	resVal, err, _ := c.sfGroup.Do(cacheKey, func() (interface{}, error) {
 		reqCtx := ctx
-		if etag != "" {
-			reqCtx = context.WithValue(ctx, ctxEtagKey, etag)
+		reqETag := etag
+		if reqETag == "" && hasCache {
+			reqETag = cached.result.ETag
+		}
+		if reqETag != "" {
+			reqCtx = context.WithValue(ctx, ctxEtagKey, reqETag)
 		}
 
 		installations, resp, err := listAllAppInstallationsRaw(reqCtx, c.Client, c.EnterpriseSlug, targetOrg)
@@ -183,6 +194,10 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg, et
 			var ghErr *github.ErrorResponse
 			if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotModified {
 				result.StatusCode = http.StatusNotModified
+				result.ETag = reqETag
+				if hasCache {
+					result.Installations = cached.result.Installations
+				}
 			} else {
 				return OrgListResult{}, err
 			}
@@ -205,10 +220,24 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg, et
 		return OrgListResult{}, err
 	}
 
-	orgResult, ok := res.(OrgListResult)
+	orgResult, ok := resVal.(OrgListResult)
 	if !ok {
-		return OrgListResult{}, fmt.Errorf("unexpected result type from singleflight: %T", res)
+		return OrgListResult{}, fmt.Errorf("unexpected result type from singleflight: %T", resVal)
 	}
+
+	if etag != "" && etag == orgResult.ETag {
+		orgResult.StatusCode = http.StatusNotModified
+		return orgResult, nil
+	}
+
+	if orgResult.StatusCode == http.StatusNotModified && len(orgResult.Installations) == 0 {
+		c.cacheMu.Lock()
+		delete(c.cache, cacheKey)
+		c.cacheMu.Unlock()
+		return c.ListAppInstallationsCached(ctx, targetOrg, "")
+	}
+
+	orgResult.StatusCode = http.StatusOK
 	return orgResult, nil
 }
 
