@@ -239,6 +239,8 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
+	// Invalidate in-memory org cache after write operations so subsequent Reads immediately fetch fresh data
+	// (read-after-write consistency), and pause 1s per GitHub API guidelines to prevent secondary rate limits.
 	r.client.InvalidateOrgCache(targetOrg)
 	time.Sleep(1 * time.Second)
 
@@ -397,6 +399,8 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
+	// Invalidate in-memory org cache after write operations so subsequent Reads immediately fetch fresh data
+	// (read-after-write consistency), and pause 1s per GitHub API guidelines to prevent secondary rate limits.
 	r.client.InvalidateOrgCache(targetOrg)
 	time.Sleep(1 * time.Second)
 
@@ -447,6 +451,8 @@ func (r *installationResource) Delete(ctx context.Context, req resource.DeleteRe
 		return
 	}
 
+	// Invalidate in-memory org cache after write operations so subsequent Reads immediately fetch fresh data
+	// (read-after-write consistency), and pause 1s per GitHub API guidelines to prevent secondary rate limits.
 	r.client.InvalidateOrgCache(targetOrg)
 	time.Sleep(1 * time.Second)
 }
