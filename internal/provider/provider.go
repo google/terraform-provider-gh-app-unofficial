@@ -154,7 +154,7 @@ func newRetryableHTTPClient() *http.Client {
 
 const defaultCacheTTL = 5 * time.Second
 
-type cachedOrgList struct {
+type cacheEntry struct {
 	installations []*github.Installation
 	etag          string
 	fetchedAt     time.Time
@@ -163,7 +163,7 @@ type cachedOrgList struct {
 type orgInstallationCache struct {
 	mu      sync.RWMutex
 	ttl     time.Duration
-	entries map[string]cachedOrgList
+	entries map[string]cacheEntry
 }
 
 func newOrgInstallationCache(ttl time.Duration) *orgInstallationCache {
@@ -172,26 +172,26 @@ func newOrgInstallationCache(ttl time.Duration) *orgInstallationCache {
 	}
 	return &orgInstallationCache{
 		ttl:     ttl,
-		entries: make(map[string]cachedOrgList),
+		entries: make(map[string]cacheEntry),
 	}
 }
 
 // Get returns the cached installations and ETag for an organization.
 // isFresh is true if the cached entry is within the TTL window.
 // exists is true if an entry is present (even if expired).
-func (c *orgInstallationCache) Get(org string) (entry cachedOrgList, isFresh bool, exists bool) {
+func (c *orgInstallationCache) Get(org string) (entry cacheEntry, isFresh bool, exists bool) {
 	if c == nil {
-		return cachedOrgList{}, false, false
+		return cacheEntry{}, false, false
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	if c.entries == nil {
-		return cachedOrgList{}, false, false
+		return cacheEntry{}, false, false
 	}
 	entry, exists = c.entries[org]
 	if !exists {
-		return cachedOrgList{}, false, false
+		return cacheEntry{}, false, false
 	}
 	isFresh = time.Since(entry.fetchedAt) < c.ttl
 	return entry, isFresh, true
@@ -206,9 +206,9 @@ func (c *orgInstallationCache) Set(org string, installations []*github.Installat
 	defer c.mu.Unlock()
 
 	if c.entries == nil {
-		c.entries = make(map[string]cachedOrgList)
+		c.entries = make(map[string]cacheEntry)
 	}
-	c.entries[org] = cachedOrgList{
+	c.entries[org] = cacheEntry{
 		installations: installations,
 		etag:          etag,
 		fetchedAt:     time.Now(),
