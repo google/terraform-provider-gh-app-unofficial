@@ -774,15 +774,121 @@ func TestListAppInstallationsCached_Singleflight(t *testing.T) {
 	}
 }
 
+func TestETagTransport_ClonesRequest(t *testing.T) {
+	t.Parallel()
+
+	var receivedETag atomic.Pointer[string]
+	mockRT := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		etag := req.Header.Get("If-None-Match")
+		receivedETag.Store(&etag)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewBufferString("{}")),
+			Header:     make(http.Header),
+		}, nil
+	})
+
+	transport := &etagTransport{transport: mockRT}
+
+	ctx := context.WithValue(context.Background(), ctxEtagKey, `"etag-xyz"`)
+	origReq, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/enterprises/test/apps/organizations/test/installations", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+
+	if origHeader := origReq.Header.Get("If-None-Match"); origHeader != "" {
+		t.Fatalf("expected initial If-None-Match to be empty, got %q", origHeader)
+	}
+
+	resp, err := transport.RoundTrip(origReq)
+	if err != nil {
+		t.Fatalf("RoundTrip failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	gotETag := ""
+	if p := receivedETag.Load(); p != nil {
+		gotETag = *p
+	}
+	if gotETag != `"etag-xyz"` {
+		t.Errorf("expected transported request to have If-None-Match %q, got %q", `"etag-xyz"`, gotETag)
+	}
+
+	// Verify the original request was NOT mutated (http.RoundTripper contract)
+	if origHeader := origReq.Header.Get("If-None-Match"); origHeader != "" {
+		t.Errorf("expected original request header to remain unmutated (empty), got %q", origHeader)
+	}
+}
+
+func TestOrgInstallationCache_Operations(t *testing.T) {
+	t.Parallel()
+
+	cache := newOrgInstallationCache(100 * time.Millisecond)
+
+	// 1. Initial lookup on empty cache
+	entry, isFresh, exists := cache.Get("org-1")
+	if exists || isFresh || len(entry.installations) != 0 || entry.etag != "" {
+		t.Fatalf("expected empty cache miss, got exists=%v, isFresh=%v, len=%d, etag=%s", exists, isFresh, len(entry.installations), entry.etag)
+	}
+
+	// 2. Set entry
+	dummyInsts := []*github.Installation{{ID: github.Ptr(int64(42))}}
+	cache.Set("org-1", dummyInsts, `"etag-42"`)
+
+	entry, isFresh, exists = cache.Get("org-1")
+	if !exists || !isFresh || len(entry.installations) != 1 || entry.etag != `"etag-42"` {
+		t.Fatalf("expected fresh cache hit, got exists=%v, isFresh=%v, len=%d, etag=%s", exists, isFresh, len(entry.installations), entry.etag)
+	}
+
+	// 3. Expire entry
+	cache.Expire("org-1")
+	entry, isFresh, exists = cache.Get("org-1")
+	if !exists {
+		t.Fatalf("expected expired entry to still exist for conditional GET")
+	}
+	if isFresh {
+		t.Fatalf("expected expired entry to have isFresh=false")
+	}
+	if entry.etag != `"etag-42"` || len(entry.installations) != 1 {
+		t.Fatalf("expected expired entry to preserve installations and etag")
+	}
+
+	// 4. Touch entry (HTTP 304 Not Modified refresh)
+	cache.Touch("org-1")
+	entry, isFresh, exists = cache.Get("org-1")
+	if !exists || !isFresh || len(entry.installations) != 1 {
+		t.Fatalf("expected touched entry to be fresh, got exists=%v, isFresh=%v", exists, isFresh)
+	}
+
+	// 5. Invalidate entry (Write operation)
+	cache.Invalidate("org-1")
+	_, isFresh, exists = cache.Get("org-1")
+	if exists || isFresh {
+		t.Fatalf("expected invalidated entry to not exist, got exists=%v, isFresh=%v", exists, isFresh)
+	}
+
+	// 6. Nil receiver safety
+	var nilCache *orgInstallationCache
+	_, nilFresh, nilExists := nilCache.Get("org-1")
+	if nilExists || nilFresh {
+		t.Fatalf("expected nil cache Get to return false")
+	}
+	nilCache.Set("org-1", dummyInsts, "etag")
+	nilCache.Touch("org-1")
+	nilCache.Invalidate("org-1")
+	nilCache.Expire("org-1")
+}
+
 func TestListAppInstallationsCached_ETag304(t *testing.T) {
 	t.Parallel()
 
 	var reqCount atomic.Int32
-	var receivedETag string
+	var receivedETag atomic.Pointer[string]
 	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		reqCount.Add(1)
-		receivedETag = req.Header.Get("If-None-Match")
-		if receivedETag == `"etag-initial"` {
+		etag := req.Header.Get("If-None-Match")
+		receivedETag.Store(&etag)
+		if etag == `"etag-initial"` {
 			return &http.Response{
 				StatusCode: http.StatusNotModified,
 				Body:       io.NopCloser(bytes.NewBufferString("")),
@@ -803,6 +909,7 @@ func TestListAppInstallationsCached_ETag304(t *testing.T) {
 	client := &GHClient{
 		EnterpriseSlug: "my-ent",
 		Client:         ghClient,
+		cache:          newOrgInstallationCache(defaultCacheTTL),
 	}
 
 	ctx := context.Background()
@@ -814,12 +921,7 @@ func TestListAppInstallationsCached_ETag304(t *testing.T) {
 	}
 
 	// Force cache expiration so next call performs HTTP conditional GET
-	client.cacheMu.Lock()
-	if c, ok := client.cache["my-org"]; ok {
-		c.fetchedAt = time.Now().Add(-10 * time.Second)
-		client.cache["my-org"] = c
-	}
-	client.cacheMu.Unlock()
+	client.cache.Expire("my-org")
 
 	// 2. Second call sends If-None-Match: "etag-initial" and receives 304 Not Modified
 	insts2, err := client.ListAppInstallationsCached(ctx, "my-org")
@@ -831,8 +933,12 @@ func TestListAppInstallationsCached_ETag304(t *testing.T) {
 		t.Errorf("expected 1 cached installation on 304 response, got %d", len(insts2))
 	}
 
-	if receivedETag != `"etag-initial"` {
-		t.Errorf("expected If-None-Match header %q, got %q", `"etag-initial"`, receivedETag)
+	gotETag := ""
+	if p := receivedETag.Load(); p != nil {
+		gotETag = *p
+	}
+	if gotETag != `"etag-initial"` {
+		t.Errorf("expected If-None-Match header %q, got %q", `"etag-initial"`, gotETag)
 	}
 
 	if reqCount.Load() != 2 {
@@ -844,17 +950,13 @@ func TestGHClient_InvalidateOrgCache(t *testing.T) {
 	t.Parallel()
 
 	client := &GHClient{
-		cache: map[string]cachedOrgList{
-			"org-a": {installations: []*github.Installation{{ID: github.Ptr(int64(1))}}, fetchedAt: time.Now()},
-		},
+		cache: newOrgInstallationCache(defaultCacheTTL),
 	}
+	client.cache.Set("org-a", []*github.Installation{{ID: github.Ptr(int64(1))}}, "")
 
 	client.InvalidateOrgCache("org-a")
 
-	client.cacheMu.RLock()
-	_, exists := client.cache["org-a"]
-	client.cacheMu.RUnlock()
-
+	_, _, exists := client.cache.Get("org-a")
 	if exists {
 		t.Errorf("expected org-a cache to be invalidated")
 	}

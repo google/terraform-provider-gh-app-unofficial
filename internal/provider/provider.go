@@ -79,17 +79,30 @@ type ctxEtagKeyType struct{}
 
 var ctxEtagKey = ctxEtagKeyType{}
 
+// etagTransport is an http.RoundTripper that injects an If-None-Match header
+// when an ETag string is present in the request context under ctxEtagKey.
+//
+// Architectural Note: We use a custom transport paired with orgInstallationCache rather than
+// a generic HTTP cache transport (such as github-conditional-http-transport) because:
+//  1. We require organization-scoped cache invalidation (InvalidateOrgCache) immediately
+//     after mutative write operations (read-after-write consistency).
+//  2. We combine a 5s in-memory TTL struct cache with singleflight request coalescing
+//     across concurrent Terraform resource reads to achieve 0-network sub-millisecond reads.
+//  3. On HTTP 304 Not Modified, we return the parsed Go structs directly with 0 JSON
+//     deserialization overhead.
 type etagTransport struct {
 	transport http.RoundTripper
 }
 
 func (t *etagTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if etag, ok := req.Context().Value(ctxEtagKey).(string); ok && etag != "" {
-		req.Header.Set("If-None-Match", etag)
-	}
 	baseTransport := t.transport
 	if baseTransport == nil {
 		baseTransport = http.DefaultTransport
+	}
+	if etag, ok := req.Context().Value(ctxEtagKey).(string); ok && etag != "" {
+		// Clone request to avoid mutating caller's request per http.RoundTripper contract.
+		req = req.Clone(req.Context())
+		req.Header.Set("If-None-Match", etag)
 	}
 	return baseTransport.RoundTrip(req)
 }
@@ -139,35 +152,148 @@ func newRetryableHTTPClient() *http.Client {
 	return stdClient
 }
 
+const defaultCacheTTL = 5 * time.Second
+
 type cachedOrgList struct {
 	installations []*github.Installation
 	etag          string
 	fetchedAt     time.Time
 }
 
+type orgInstallationCache struct {
+	mu      sync.RWMutex
+	ttl     time.Duration
+	entries map[string]cachedOrgList
+}
+
+func newOrgInstallationCache(ttl time.Duration) *orgInstallationCache {
+	if ttl <= 0 {
+		ttl = defaultCacheTTL
+	}
+	return &orgInstallationCache{
+		ttl:     ttl,
+		entries: make(map[string]cachedOrgList),
+	}
+}
+
+// Get returns the cached installations and ETag for an organization.
+// isFresh is true if the cached entry is within the TTL window.
+// exists is true if an entry is present (even if expired).
+func (c *orgInstallationCache) Get(org string) (entry cachedOrgList, isFresh bool, exists bool) {
+	if c == nil {
+		return cachedOrgList{}, false, false
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.entries == nil {
+		return cachedOrgList{}, false, false
+	}
+	entry, exists = c.entries[org]
+	if !exists {
+		return cachedOrgList{}, false, false
+	}
+	isFresh = time.Since(entry.fetchedAt) < c.ttl
+	return entry, isFresh, true
+}
+
+// Set stores or updates cached installations and ETag for an organization.
+func (c *orgInstallationCache) Set(org string, installations []*github.Installation, etag string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.entries == nil {
+		c.entries = make(map[string]cachedOrgList)
+	}
+	c.entries[org] = cachedOrgList{
+		installations: installations,
+		etag:          etag,
+		fetchedAt:     time.Now(),
+	}
+}
+
+// Touch refreshes fetchedAt for an existing cache entry when GitHub returns HTTP 304 Not Modified.
+func (c *orgInstallationCache) Touch(org string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.entries != nil {
+		if entry, exists := c.entries[org]; exists {
+			entry.fetchedAt = time.Now()
+			c.entries[org] = entry
+		}
+	}
+}
+
+// Invalidate clears the cached entry for an organization upon mutative operations.
+func (c *orgInstallationCache) Invalidate(org string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.entries != nil {
+		delete(c.entries, org)
+	}
+}
+
+// Expire sets fetchedAt to zero time to simulate TTL expiration in unit tests.
+func (c *orgInstallationCache) Expire(org string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.entries != nil {
+		if entry, exists := c.entries[org]; exists {
+			entry.fetchedAt = time.Time{}
+			c.entries[org] = entry
+		}
+	}
+}
+
 type GHClient struct {
 	EnterpriseSlug string
 	Client         *github.Client
 
-	cacheMu sync.RWMutex
-	cache   map[string]cachedOrgList
-	sfGroup singleflight.Group
+	cache     *orgInstallationCache
+	cacheOnce sync.Once
+	sfGroup   singleflight.Group
 }
 
-const defaultCacheTTL = 5 * time.Second
+func (c *GHClient) getCache() *orgInstallationCache {
+	c.cacheOnce.Do(func() {
+		if c.cache == nil {
+			c.cache = newOrgInstallationCache(defaultCacheTTL)
+		}
+	})
+	return c.cache
+}
 
 func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg string) ([]*github.Installation, error) {
-	// 1. Return in-memory cached list if within 5s TTL
-	c.cacheMu.RLock()
-	cached, hasCache := c.cache[targetOrg]
-	if hasCache && time.Since(cached.fetchedAt) < defaultCacheTTL {
-		c.cacheMu.RUnlock()
+	cache := c.getCache()
+
+	// 1. Return in-memory cached list if within TTL
+	cached, isFresh, hasCache := cache.Get(targetOrg)
+	if isFresh {
 		return cached.installations, nil
 	}
-	c.cacheMu.RUnlock()
 
 	// 2. Coalesce concurrent requests & send in-memory ETag for conditional GET
 	resVal, err, _ := c.sfGroup.Do(targetOrg, func() (interface{}, error) {
+		// Re-check cache inside singleflight in case a concurrent worker just populated it
+		if current, fresh, _ := cache.Get(targetOrg); fresh {
+			return current.installations, nil
+		}
+
 		reqCtx := ctx
 		if hasCache && cached.etag != "" {
 			reqCtx = context.WithValue(ctx, ctxEtagKey, cached.etag)
@@ -178,13 +304,10 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg str
 		// 3. Handle 304 Not Modified (0 rate limit cost!)
 		var ghErr *github.ErrorResponse
 		if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotModified {
-			c.cacheMu.Lock()
-			c.cache[targetOrg] = cachedOrgList{
-				installations: cached.installations,
-				etag:          cached.etag,
-				fetchedAt:     time.Now(),
+			cache.Touch(targetOrg)
+			if touched, _, found := cache.Get(targetOrg); found && touched.installations != nil {
+				return touched.installations, nil
 			}
-			c.cacheMu.Unlock()
 			return cached.installations, nil
 		}
 
@@ -197,17 +320,7 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg str
 			newETag = resp.Header.Get("ETag")
 		}
 
-		c.cacheMu.Lock()
-		if c.cache == nil {
-			c.cache = make(map[string]cachedOrgList)
-		}
-		c.cache[targetOrg] = cachedOrgList{
-			installations: installations,
-			etag:          newETag,
-			fetchedAt:     time.Now(),
-		}
-		c.cacheMu.Unlock()
-
+		cache.Set(targetOrg, installations, newETag)
 		return installations, nil
 	})
 
@@ -224,11 +337,7 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg str
 }
 
 func (c *GHClient) InvalidateOrgCache(targetOrg string) {
-	c.cacheMu.Lock()
-	defer c.cacheMu.Unlock()
-	if c.cache != nil {
-		delete(c.cache, targetOrg)
-	}
+	c.getCache().Invalidate(targetOrg)
 }
 
 func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
@@ -324,6 +433,7 @@ func (p *GHAppProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	client := &GHClient{
 		EnterpriseSlug: entpriseSlug,
 		Client:         ghClient,
+		cache:          newOrgInstallationCache(defaultCacheTTL),
 	}
 
 	// make the data available to data sources and resources
