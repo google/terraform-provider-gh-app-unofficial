@@ -6,6 +6,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -176,9 +177,39 @@ func newOrgInstallationCache(ttl time.Duration) *orgInstallationCache {
 	}
 }
 
+// cloneInstallation creates a deep defensive copy of a github.Installation struct
+// and all nested pointer/slice fields via JSON round-trip.
+func cloneInstallation(in *github.Installation) *github.Installation {
+	if in == nil {
+		return nil
+	}
+	b, err := json.Marshal(in)
+	if err != nil {
+		return nil
+	}
+	var out github.Installation
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil
+	}
+	return &out
+}
+
+// cloneInstallations returns a deep defensive copy of a slice of installation pointers.
+func cloneInstallations(in []*github.Installation) []*github.Installation {
+	if in == nil {
+		return nil
+	}
+	out := make([]*github.Installation, len(in))
+	for i, inst := range in {
+		out[i] = cloneInstallation(inst)
+	}
+	return out
+}
+
 // Get returns the cached installations and ETag for an organization.
 // isFresh is true if the cached entry is within the TTL window.
 // exists is true if an entry is present (even if expired).
+// The returned slice is defensively cloned to ensure callers cannot mutate internal cache state.
 func (c *orgInstallationCache) Get(org string) (entry cacheEntry, isFresh bool, exists bool) {
 	if c == nil {
 		return cacheEntry{}, false, false
@@ -194,10 +225,12 @@ func (c *orgInstallationCache) Get(org string) (entry cacheEntry, isFresh bool, 
 		return cacheEntry{}, false, false
 	}
 	isFresh = time.Since(entry.fetchedAt) < c.ttl
+	entry.installations = cloneInstallations(entry.installations)
 	return entry, isFresh, true
 }
 
 // Set stores or updates cached installations and ETag for an organization.
+// The provided slice is defensively cloned to isolate the cache from caller modifications.
 func (c *orgInstallationCache) Set(org string, installations []*github.Installation, etag string) {
 	if c == nil {
 		return
@@ -209,7 +242,7 @@ func (c *orgInstallationCache) Set(org string, installations []*github.Installat
 		c.entries = make(map[string]cacheEntry)
 	}
 	c.entries[org] = cacheEntry{
-		installations: installations,
+		installations: cloneInstallations(installations),
 		etag:          etag,
 		fetchedAt:     time.Now(),
 	}
@@ -281,7 +314,7 @@ func (c *GHClient) getCache() *orgInstallationCache {
 func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg string) ([]*github.Installation, error) {
 	cache := c.getCache()
 
-	// 1. Return in-memory cached list if within TTL
+	// 1. Return in-memory cached list if within TTL (defensively cloned in cache.Get)
 	cached, isFresh, hasCache := cache.Get(targetOrg)
 	if isFresh {
 		return cached.installations, nil
@@ -308,7 +341,7 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg str
 			if touched, _, found := cache.Get(targetOrg); found && touched.installations != nil {
 				return touched.installations, nil
 			}
-			return cached.installations, nil
+			return cloneInstallations(cached.installations), nil
 		}
 
 		if err != nil {
@@ -321,7 +354,7 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg str
 		}
 
 		cache.Set(targetOrg, installations, newETag)
-		return installations, nil
+		return cloneInstallations(installations), nil
 	})
 
 	if err != nil {
@@ -333,7 +366,7 @@ func (c *GHClient) ListAppInstallationsCached(ctx context.Context, targetOrg str
 		return nil, fmt.Errorf("unexpected result type from singleflight: %T", resVal)
 	}
 
-	return instList, nil
+	return cloneInstallations(instList), nil
 }
 
 func (c *GHClient) InvalidateOrgCache(targetOrg string) {

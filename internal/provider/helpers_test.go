@@ -961,3 +961,111 @@ func TestGHClient_InvalidateOrgCache(t *testing.T) {
 		t.Errorf("expected org-a cache to be invalidated")
 	}
 }
+
+func TestOrgInstallationCache_DefensiveCopy(t *testing.T) {
+	t.Parallel()
+
+	cache := newOrgInstallationCache(defaultCacheTTL)
+
+	origInst := &github.Installation{
+		ID:      github.Ptr(int64(100)),
+		AppSlug: github.Ptr("orig-slug"),
+		Permissions: &github.InstallationPermissions{
+			Actions: github.Ptr("read"),
+		},
+		Events: []string{"push"},
+	}
+
+	// 1. Verify Set defensively copies input
+	inputSlice := []*github.Installation{origInst}
+	cache.Set("org-copy", inputSlice, "etag-1")
+
+	// Mutate input slice and original struct after Set
+	inputSlice[0] = nil
+	*origInst.AppSlug = "mutated-slug"
+	origInst.Events[0] = "mutated-event"
+	*origInst.Permissions.Actions = "write"
+
+	entry, isFresh, exists := cache.Get("org-copy")
+	if !exists || !isFresh || len(entry.installations) != 1 {
+		t.Fatalf("expected cache entry to exist, got exists=%v, len=%d", exists, len(entry.installations))
+	}
+
+	got := entry.installations[0]
+	if got.GetAppSlug() != "orig-slug" {
+		t.Errorf("cache was corrupted by input struct mutation; got %q, want 'orig-slug'", got.GetAppSlug())
+	}
+	if len(got.Events) != 1 || got.Events[0] != "push" {
+		t.Errorf("cache was corrupted by input slice mutation; got %v, want ['push']", got.Events)
+	}
+	if got.GetPermissions().GetActions() != "read" {
+		t.Errorf("cache was corrupted by input permissions mutation; got %q, want 'read'", got.GetPermissions().GetActions())
+	}
+
+	// 2. Verify Get returns a defensive copy that caller cannot mutate
+	*got.AppSlug = "mutated-from-get"
+	got.Events[0] = "mutated-from-get-event"
+	*got.Permissions.Actions = "admin"
+
+	entry2, _, _ := cache.Get("org-copy")
+	got2 := entry2.installations[0]
+	if got2.GetAppSlug() != "orig-slug" {
+		t.Errorf("cache was corrupted by Get output mutation; got %q, want 'orig-slug'", got2.GetAppSlug())
+	}
+	if len(got2.Events) != 1 || got2.Events[0] != "push" {
+		t.Errorf("cache was corrupted by Get events mutation; got %v, want ['push']", got2.Events)
+	}
+	if got2.GetPermissions().GetActions() != "read" {
+		t.Errorf("cache was corrupted by Get permissions mutation; got %q, want 'read'", got2.GetPermissions().GetActions())
+	}
+}
+
+func TestListAppInstallationsCached_DefensiveCopy(t *testing.T) {
+	t.Parallel()
+
+	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		body := `[{"id":1,"app_slug":"app-1","permissions":{"actions":"read"},"events":["push"]}]`
+		header := make(http.Header)
+		header.Set("ETag", `"etag-test"`)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewBufferString(body)),
+			Header:     header,
+		}, nil
+	})
+
+	httpClient := &http.Client{Transport: rt}
+	ghClient, _ := github.NewClient(github.WithHTTPClient(httpClient))
+	client := &GHClient{
+		EnterpriseSlug: "ent",
+		Client:         ghClient,
+		cache:          newOrgInstallationCache(defaultCacheTTL),
+	}
+
+	ctx := context.Background()
+
+	// Call 1
+	insts1, err := client.ListAppInstallationsCached(ctx, "org-test")
+	if err != nil || len(insts1) != 1 {
+		t.Fatalf("call 1 failed: %v, len: %d", err, len(insts1))
+	}
+
+	// Mutate returned slice & struct
+	*insts1[0].AppSlug = "mutated"
+	insts1[0].Events[0] = "mutated-event"
+	insts1 = append(insts1, &github.Installation{ID: github.Ptr(int64(999))})
+
+	// Call 2 (cache hit)
+	insts2, err := client.ListAppInstallationsCached(ctx, "org-test")
+	if err != nil || len(insts2) != 1 {
+		t.Fatalf("call 2 failed: %v, len: %d", err, len(insts2))
+	}
+
+	if insts2[0].GetAppSlug() != "app-1" {
+		t.Errorf("expected 'app-1', got %q", insts2[0].GetAppSlug())
+	}
+	if len(insts2[0].Events) != 1 || insts2[0].Events[0] != "push" {
+		t.Errorf("expected ['push'], got %v", insts2[0].Events)
+	}
+}
+
