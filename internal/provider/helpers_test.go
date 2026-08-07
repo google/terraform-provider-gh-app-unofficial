@@ -1053,7 +1053,8 @@ func TestListAppInstallationsCached_DefensiveCopy(t *testing.T) {
 	// Mutate returned slice & struct
 	*insts1[0].AppSlug = "mutated"
 	insts1[0].Events[0] = "mutated-event"
-	insts1 = append(insts1, &github.Installation{ID: github.Ptr(int64(999))})
+	_ = append(insts1, &github.Installation{ID: github.Ptr(int64(999))})
+	insts1[0] = nil
 
 	// Call 2 (cache hit)
 	insts2, err := client.ListAppInstallationsCached(ctx, "org-test")
@@ -1068,4 +1069,3 @@ func TestListAppInstallationsCached_DefensiveCopy(t *testing.T) {
 		t.Errorf("expected ['push'], got %v", insts2[0].Events)
 	}
 }
-
