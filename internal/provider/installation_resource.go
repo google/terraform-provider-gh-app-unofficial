@@ -239,6 +239,11 @@ func (r *installationResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
+	// Invalidate in-memory org cache after write operations so subsequent Reads immediately fetch fresh data
+	// (read-after-write consistency), and pause 1s per GitHub API guidelines to prevent secondary rate limits.
+	r.client.InvalidateOrgCache(targetOrg)
+	time.Sleep(1 * time.Second)
+
 	instIDStr := fmt.Sprintf("%d", installation.GetID())
 	plan.ID = types.StringValue(fmt.Sprintf("%s/%s", targetOrg, instIDStr))
 	plan.InstallationID = types.StringValue(instIDStr)
@@ -281,8 +286,8 @@ func (r *installationResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	// List installations for the organization
-	installations, err := listAllAppInstallations(ctx, client, enterpriseSlug, targetOrg)
+	// List installations for the organization using cached singleflight client
+	installations, err := r.client.ListAppInstallationsCached(ctx, targetOrg)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading GitHub App Installations",
@@ -394,6 +399,11 @@ func (r *installationResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
+	// Invalidate in-memory org cache after write operations so subsequent Reads immediately fetch fresh data
+	// (read-after-write consistency), and pause 1s per GitHub API guidelines to prevent secondary rate limits.
+	r.client.InvalidateOrgCache(targetOrg)
+	time.Sleep(1 * time.Second)
+
 	plan.ID = types.StringValue(fmt.Sprintf("%s/%d", targetOrg, instID))
 	plan.InstallationID = types.StringValue(fmt.Sprintf("%d", instID))
 	plan.TargetOrg = types.StringValue(targetOrg)
@@ -440,6 +450,11 @@ func (r *installationResource) Delete(ctx context.Context, req resource.DeleteRe
 		resp.Diagnostics.AddError("Failed to uninstall app", err.Error())
 		return
 	}
+
+	// Invalidate in-memory org cache after write operations so subsequent Reads immediately fetch fresh data
+	// (read-after-write consistency), and pause 1s per GitHub API guidelines to prevent secondary rate limits.
+	r.client.InvalidateOrgCache(targetOrg)
+	time.Sleep(1 * time.Second)
 }
 
 // ImportState handles the import of an existing resource. Expects <id> in the format <org>/<installation_id>.

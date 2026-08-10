@@ -147,7 +147,7 @@ func (d *installationsDataSource) Read(ctx context.Context, req datasource.ReadR
 	client := d.client.Client
 	enterpriseSlug := d.client.EnterpriseSlug
 
-	installations, err := listAllAppInstallations(ctx, client, enterpriseSlug, data.TargetOrg.ValueString())
+	installations, err := d.client.ListAppInstallationsCached(ctx, data.TargetOrg.ValueString())
 	if err != nil {
 		tflog.Error(ctx, "Failed to list installations", map[string]interface{}{
 			"error":           err.Error(),

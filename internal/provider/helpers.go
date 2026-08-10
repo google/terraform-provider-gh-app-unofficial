@@ -47,19 +47,34 @@ func flattenPermissions(ctx context.Context, permissions *github.InstallationPer
 	return permissionsVal
 }
 
-// listAllAppInstallations lists all GitHub App installations for an organization, paginating through all results using an iterator.
-func listAllAppInstallations(ctx context.Context, client *github.Client, enterpriseSlug, targetOrg string) ([]*github.Installation, error) {
+// listAllAppInstallationsRaw executes the raw enterprise list installations request and returns installations along with the initial HTTP response.
+func listAllAppInstallationsRaw(ctx context.Context, client *github.Client, enterpriseSlug, targetOrg string) ([]*github.Installation, *github.Response, error) {
 	var allInstallations []*github.Installation
 	opts := &github.ListOptions{PerPage: 100}
+	var firstResp *github.Response
 
-	for inst, err := range client.Enterprise.ListAppInstallationsIter(ctx, enterpriseSlug, targetOrg, opts) {
-		if err != nil {
-			return nil, err
+	for {
+		installations, resp, err := client.Enterprise.ListAppInstallations(ctx, enterpriseSlug, targetOrg, opts)
+		if firstResp == nil {
+			firstResp = resp
 		}
-		allInstallations = append(allInstallations, inst)
+		if err != nil {
+			return nil, firstResp, err
+		}
+		allInstallations = append(allInstallations, installations...)
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
 	}
 
-	return allInstallations, nil
+	return allInstallations, firstResp, nil
+}
+
+// listAllAppInstallations lists all GitHub App installations for an organization, paginating through all results using an iterator.
+func listAllAppInstallations(ctx context.Context, client *github.Client, enterpriseSlug, targetOrg string) ([]*github.Installation, error) {
+	installations, _, err := listAllAppInstallationsRaw(ctx, client, enterpriseSlug, targetOrg)
+	return installations, err
 }
 
 // listAllRepositoriesForOrgAppInstallation lists all repositories for an organization app installation, paginating through all results using an iterator.
