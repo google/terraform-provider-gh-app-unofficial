@@ -3,12 +3,12 @@
 page_title: "gh-app-unofficial_installation Resource - gh-app-unofficial"
 subcategory: ""
 description: |-
-  
+  Manages a GitHub App installation and repository access policy within a target organization under a GitHub Enterprise account.
 ---
 
 # gh-app-unofficial_installation (Resource)
 
-
+Manages a GitHub App installation and repository access policy within a target organization under a GitHub Enterprise account.
 
 ## Example Usage
 

@@ -54,6 +54,7 @@ type installation struct {
 // Schema defines the schema for the data source.
 func (d *installationsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		MarkdownDescription: "Lists all GitHub App installations and their repository access configurations within a target organization.",
 		Attributes: map[string]schema.Attribute{
 			"target_org": schema.StringAttribute{
 				Required:    true,

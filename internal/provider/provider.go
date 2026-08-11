@@ -52,6 +52,7 @@ func (p *GHAppProvider) Metadata(ctx context.Context, req provider.MetadataReque
 
 func (p *GHAppProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		MarkdownDescription: "A Terraform provider for managing GitHub App installations and repository access topologies across GitHub Enterprise organizations.",
 		Attributes: map[string]schema.Attribute{
 			"token": schema.StringAttribute{
 				Optional:    true,

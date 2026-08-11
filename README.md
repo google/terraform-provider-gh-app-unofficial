@@ -38,21 +38,27 @@ flowchart TD
     subgraph Enterprise ["GitHub Enterprise Account"]
         direction TB
 
-        ENT_APP["Enterprise App<br/>(Terraform Manager)"]
+        ENT_APP["`**Enterprise App**
+        (Terraform Manager)`"]
 
         subgraph ORG_A ["org-a (App Owner)"]
-            TARGET_APP["Target App<br/>(Client ID: Iv1.xxx)"]
+            TARGET_APP["`**Target App**
+            (Client ID: Iv1.xxx)`"]
         end
 
         subgraph ORG_B ["org-b (Target Organization)"]
             direction TB
-            INST_B["Target App Installation<br/>(Repository Selection: selected)"]
+            INST_B["`**Target App Installation**
+            (Repository Selection: selected)`"]
             
             subgraph Repos ["Repositories"]
                 direction LR
-                R1["repo-1<br/>(Access Granted)"]
-                R2["repo-2<br/>(Access Granted)"]
-                R3["repo-3<br/>(Excluded)"]
+                R1["`**repo-1**
+                (Access Granted)`"]
+                R2["`**repo-2**
+                (Access Granted)`"]
+                R3["`**repo-3**
+                (Excluded)`"]
             end
 
             INST_B --> R1
@@ -61,7 +67,8 @@ flowchart TD
         end
 
         subgraph ORG_C ["org-c (Target Organization)"]
-            INST_C["Target App Installation<br/>(Repository Selection: all)"]
+            INST_C["`**Target App Installation**
+            (Repository Selection: all)`"]
         end
 
         ENT_APP -.->|"1. Authorizes & Manages"| INST_B

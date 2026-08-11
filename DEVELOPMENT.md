@@ -49,15 +49,18 @@ flowchart TD
     subgraph Enterprise ["GitHub Enterprise (GITHUB_ENTERPRISE_SLUG)"]
         direction TB
 
-        M_INST["Manager App<br/>(GITHUB_APP_INSTALLATION_ID)"]
+        M_INST["`**Manager App**
+        (GITHUB_APP_INSTALLATION_ID)`"]
 
         subgraph ORG_A ["org-a (App Owner Org)"]
-            T_APP["Target App<br/>(GITHUB_APP_CLIENT_ID)"]
+            T_APP["`**Target App**
+            (GITHUB_APP_CLIENT_ID)`"]
         end
 
         subgraph ORG_B ["org-b (Target Sandbox Org: GITHUB_TARGET_ORG)"]
             direction TB
-            INST["gh-app-unofficial_installation<br/>(Managed by Terraform)"]
+            INST["`**gh-app-unofficial_installation**
+            (Managed by Terraform)`"]
             
             subgraph Repos ["Fixture Repositories"]
                 direction LR
@@ -211,14 +214,22 @@ The provider client (`internal/provider/provider.go`) is engineered for high con
 
 ```mermaid
 graph TD
-    TF_PLAN["Terraform Plan / Apply <br/> (Parallel Resource Reads)"] --> SF["singleflight.Group <br/> (Coalesces duplicate concurrent reads)"]
-    SF --> CACHE{"In-Memory TTL Cache <br/> (5s Window)"}
-    CACHE -->|"Cache Hit (Fresh)"| MEM["Return Deep Cloned Struct <br/> (0 API Calls, 0 JSON overhead)"]
-    CACHE -->|"Cache Expired / Miss"| ETAG["etagTransport <br/> (Conditional GET: If-None-Match)"]
-    ETAG --> API["GitHub Enterprise REST API <br/> (/enterprises/{slug}/...)"]
-    API -->|"HTTP 304 Not Modified"| HIT["Return Cached Struct <br/> (0 Rate Limit Cost)"]
+    TF_PLAN["`**Terraform Plan / Apply**
+    (Parallel Resource Reads)`"] --> SF["`**singleflight.Group**
+    (Coalesces duplicate concurrent reads)`"]
+    SF --> CACHE{"`**In-Memory TTL Cache**
+    (5s Window)`"}
+    CACHE -->|"Cache Hit (Fresh)"| MEM["`**Return Deep Cloned Struct**
+    (0 API Calls, 0 JSON overhead)`"]
+    CACHE -->|"Cache Expired / Miss"| ETAG["`**etagTransport**
+    (Conditional GET: If-None-Match)`"]
+    ETAG --> API["`**GitHub Enterprise REST API**
+    (/enterprises/{slug}/...)`"]
+    API -->|"HTTP 304 Not Modified"| HIT["`**Return Cached Struct**
+    (0 Rate Limit Cost)`"]
     API -->|"HTTP 200 OK"| UPDATE["Update Cache Entry & ETag"]
-    MUT["Resource Mutations <br/> (Create / Update / Delete)"] -->|"InvalidateOrgCache(org)"| CACHE
+    MUT["`**Resource Mutations**
+    (Create / Update / Delete)`"] -->|"InvalidateOrgCache(org)"| CACHE
 ```
 
 - **`singleflight.Group`**: Coalesces concurrent reads for the same organization into a single HTTP request across parallel Terraform worker goroutines.
