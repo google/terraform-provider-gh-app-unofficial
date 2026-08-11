@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"github.com/google/go-github/v88/github"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -81,6 +83,133 @@ func checkErrorOrDiags(t *testing.T, errOrDiags any, wantErr string) {
 	t.Helper()
 	if diff := diffErrString(errOrDiags, wantErr); diff != "" {
 		t.Fatal(diff)
+	}
+}
+
+// mockHTTPResponse returns a roundTripperFunc that yields a static HTTP status code and response body.
+func mockHTTPResponse(status int, body string) roundTripperFunc {
+	return func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: status,
+			Body:       io.NopCloser(bytes.NewBufferString(body)),
+			Header:     make(http.Header),
+		}, nil
+	}
+}
+
+// mockHTTPError returns a roundTripperFunc that immediately fails with the given error message.
+func mockHTTPError(errStr string) roundTripperFunc {
+	return func(req *http.Request) (*http.Response, error) {
+		return nil, errors.New(errStr)
+	}
+}
+
+// newTestGHClient constructs a *GHClient wrapping an http.Client with the given http.RoundTripper.
+func newTestGHClient(rt http.RoundTripper) *GHClient {
+	httpClient := &http.Client{Transport: rt}
+	ghClient, _ := github.NewClient(github.WithHTTPClient(httpClient))
+	return &GHClient{Client: ghClient, EnterpriseSlug: "test-ent"}
+}
+
+// newTestConfig creates a tfsdk.Config from a Go model struct for unit testing.
+func newTestConfig[T any](t *testing.T, ctx context.Context, s any, model T) tfsdk.Config {
+	t.Helper()
+	type typeable interface{ Type() attr.Type }
+	typ, ok := s.(typeable)
+	if !ok {
+		t.Fatalf("schema does not implement Type(): %T", s)
+	}
+	var objVal attr.Value
+	if err := tfsdk.ValueFrom(ctx, model, typ.Type(), &objVal); err != nil {
+		t.Fatalf("failed to convert model to attr.Value: %v", err)
+	}
+	rawVal, err := objVal.ToTerraformValue(ctx)
+	if err != nil {
+		t.Fatalf("failed to convert to terraform value: %v", err)
+	}
+	cfg := tfsdk.Config{Raw: rawVal}
+	reflect.ValueOf(&cfg).Elem().FieldByName("Schema").Set(reflect.ValueOf(s))
+	return cfg
+}
+
+// newTestPlan creates a tfsdk.Plan from a Go model struct for unit testing.
+func newTestPlan[T any](t *testing.T, ctx context.Context, s any, model T) tfsdk.Plan {
+	t.Helper()
+	type typeable interface{ Type() attr.Type }
+	typ, ok := s.(typeable)
+	if !ok {
+		t.Fatalf("schema does not implement Type(): %T", s)
+	}
+	var objVal attr.Value
+	if err := tfsdk.ValueFrom(ctx, model, typ.Type(), &objVal); err != nil {
+		t.Fatalf("failed to convert model to attr.Value: %v", err)
+	}
+	rawVal, err := objVal.ToTerraformValue(ctx)
+	if err != nil {
+		t.Fatalf("failed to convert to terraform value: %v", err)
+	}
+	plan := tfsdk.Plan{Raw: rawVal}
+	reflect.ValueOf(&plan).Elem().FieldByName("Schema").Set(reflect.ValueOf(s))
+	return plan
+}
+
+// newTestState creates a tfsdk.State from a Go model struct for unit testing.
+func newTestState[T any](t *testing.T, ctx context.Context, s any, model T) tfsdk.State {
+	t.Helper()
+	type typeable interface{ Type() attr.Type }
+	typ, ok := s.(typeable)
+	if !ok {
+		t.Fatalf("schema does not implement Type(): %T", s)
+	}
+	var objVal attr.Value
+	if err := tfsdk.ValueFrom(ctx, model, typ.Type(), &objVal); err != nil {
+		t.Fatalf("failed to convert model to attr.Value: %v", err)
+	}
+	rawVal, err := objVal.ToTerraformValue(ctx)
+	if err != nil {
+		t.Fatalf("failed to convert to terraform value: %v", err)
+	}
+	state := tfsdk.State{Raw: rawVal}
+	reflect.ValueOf(&state).Elem().FieldByName("Schema").Set(reflect.ValueOf(s))
+	return state
+}
+
+// newTestResourceModel constructs a fully initialized installationResourceModel with valid element types for unit testing.
+func newTestResourceModel(id, targetOrg, clientID, selection string, repos []string) installationResourceModel {
+	var repoSetAttr types.Set
+	if len(repos) > 0 {
+		var vals []attr.Value
+		for _, r := range repos {
+			vals = append(vals, types.StringValue(r))
+		}
+		repoSetAttr = types.SetValueMust(types.StringType, vals)
+	} else {
+		repoSetAttr = types.SetNull(types.StringType)
+	}
+
+	return installationResourceModel{
+		ID:                   types.StringValue(id),
+		TargetOrg:            types.StringValue(targetOrg),
+		ClientID:             types.StringValue(clientID),
+		AppSlug:              types.StringValue("test-app"),
+		SelectedRepositories: repoSetAttr,
+		RepositorySelection:  types.StringValue(selection),
+		Events:               types.ListNull(types.StringType),
+		Permissions:          types.MapNull(types.StringType),
+		CreatedAt:            types.StringValue("2026-07-01T20:00:00Z"),
+		UpdatedAt:            types.StringValue("2026-07-01T20:00:00Z"),
+	}
+}
+
+// checkState unpacks the response state and asserts equality against want using cmp.Diff.
+func checkState[T any](t *testing.T, ctx context.Context, state tfsdk.State, want T) {
+	t.Helper()
+	var got T
+	if diags := state.Get(ctx, &got); diags.HasError() {
+		t.Fatalf("unexpected state unpack error: %v", diags)
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("state mismatch (-want +got):\n%s", diff)
 	}
 }
 
