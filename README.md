@@ -228,9 +228,8 @@ Full generated schema documentation for the provider, resources, and data source
 
 ## Development & Contributing
 
-If you wish to contribute to the provider, run offline unit tests, execute live acceptance tests against a sandbox organization, or debug using VS Code and Delve (`dlv`), please see our comprehensive developer guide:
+If you wish to contribute to the provider, run offline unit tests, execute live acceptance tests against a sandbox organization, or debug using VS Code and Delve (`dlv`), please see our comprehensive developer guide in **[DEVELOPMENT.md](./DEVELOPMENT.md)**.
 
-👉 **[DEVELOPMENT.md](./DEVELOPMENT.md)**
 
 For guidelines on contributor license agreements, code reviews, and our code of conduct, please review **[CONTRIBUTING.md](./CONTRIBUTING.md)**.
 
