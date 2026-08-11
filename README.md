@@ -62,9 +62,9 @@ flowchart TD
                 (Excluded)`"]
             end
 
-            INST_B --> REPOS_B
-            INST_B --> REPOS_B
-            INST_B -.->|Excluded| REPOS_B
+            INST_B --> R1
+            INST_B --> R2
+            INST_B -.->|Excluded| R3
         end
 
         subgraph ORG_C ["org-c (Target Organization)"]
