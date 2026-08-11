@@ -11,41 +11,65 @@ Using this provider, platform and security teams can automate the installation, 
 
 ---
 
-## Architecture Overview
+## Why This Provider?
 
-This provider leverages enterprise-scoped administrative credentials to manage GitHub App installations across all organizations under a GitHub Enterprise account:
+> Managing GitHub Apps across a multi-organization enterprise shouldn't require hundreds of personal access tokens or manual clicks.
+
+### The Problem: The Enterprise Multi-Org Automation Gap
+- **What is a GitHub App?**: GitHub Apps are first-class, dedicated machine identities. Unlike personal user accounts or Personal Access Tokens (PATs), GitHub Apps provide fine-grained scoped permissions, short-lived tokens, and explicit organization/repository boundaries. They are the industry standard for security scanners, CI/CD runners, and automation bots.
+- **The Multi-Org Challenge**: In a GitHub Enterprise with dozens or hundreds of organizations, deploying a required GitHub App (such as a compliance auditor or dependency scanner) is difficult to automate. The official `integrations/github` Terraform provider only manages installations on a per-organization basis, requiring individual **Organization Owner Personal Access Tokens** for *every single organization*.
+- **The Result**: Security teams and infrastructure engineers face personal access token sprawl, manual onboarding toil, and a lack of centralized governance over app topology.
+
+### The Solution: Declarative Enterprise App Topology
+This provider bridges that gap by leveraging GitHub Enterprise's enterprise-level installation APIs (`/enterprises/{enterprise}/...`):
+- **Zero Token Sprawl**: Authenticate once using an enterprise-scoped administrative identity instead of collecting individual organization owner tokens.
+- **Declarative App Topology**: Define exactly which organizations and repositories have access to your GitHub Apps directly in Terraform HCL code.
+- **Continuous Drift Reconciliation**: Prevent out-of-band app uninstallations or permission modifications with standard `terraform plan` and `terraform apply`.
+- **Cloud & On-Premises Parity**: Fully supports both **GitHub Enterprise Cloud (GHEC)** and self-hosted **GitHub Enterprise Server (GHES)**.
+
+---
+
+## App Topology Architecture
+
+This diagram illustrates how an enterprise-level Manager App authorizes Terraform to deploy and scope a Target App across enterprise organizations:
 
 ```mermaid
-graph TD
-    subgraph GHE ["GitHub Enterprise Account"]
+flowchart TD
+    subgraph Enterprise ["GitHub Enterprise Account"]
         direction TB
-        MANAGER["Manager GitHub App<br/>Enterprise Installations: Read & Write"]
-        
-        subgraph ORG_A ["App Owner Organization (org-a)"]
-            TARGET_APP["Target GitHub App<br/>Client ID: Iv1.0123456789abcdef"]
+
+        ENT_APP["Enterprise App<br/>(Terraform Manager)"]
+
+        subgraph ORG_A ["org-a (App Owner)"]
+            TARGET_APP["Target App<br/>(Client ID: Iv1.xxx)"]
         end
 
-        subgraph ORGS ["Target Organizations"]
-            direction LR
-            subgraph ORG_B ["org-b"]
-                INST_B["gh-app-unofficial_installation<br/>(Repository Selection: selected)"]
-                R1["repo-alpha"]
-                R2["repo-beta"]
-                INST_B -->|Scopes| R1
-                INST_B -->|Scopes| R2
+        subgraph ORG_B ["org-b (Target Organization)"]
+            direction TB
+            INST_B["Target App Installation<br/>(Repository Selection: selected)"]
+            
+            subgraph Repos ["Repositories"]
+                direction LR
+                R1["repo-1<br/>(Access Granted)"]
+                R2["repo-2<br/>(Access Granted)"]
+                R3["repo-3<br/>(Excluded)"]
             end
 
-            subgraph ORG_C ["org-c"]
-                INST_C["gh-app-unofficial_installation<br/>(Repository Selection: all)"]
-            end
+            INST_B --> R1
+            INST_B --> R2
+            INST_B -.->|Excluded| R3
         end
+
+        subgraph ORG_C ["org-c (Target Organization)"]
+            INST_C["Target App Installation<br/>(Repository Selection: all)"]
+        end
+
+        ENT_APP -.->|"1. Authorizes & Manages"| INST_B
+        ENT_APP -.->|"1. Authorizes & Manages"| INST_C
+
+        TARGET_APP -->|"2. Installed Onto"| INST_B
+        TARGET_APP -->|"2. Installed Onto"| INST_C
     end
-
-    TF["Terraform Engine<br/>(gh-app-unofficial)"] -->|"1. Auth Token"| MANAGER
-    TF -->|"2. Manage"| INST_B
-    TF -->|"3. Manage"| INST_C
-    TARGET_APP -.->|"Installed Onto"| INST_B
-    TARGET_APP -.->|"Installed Onto"| INST_C
 ```
 
 ---

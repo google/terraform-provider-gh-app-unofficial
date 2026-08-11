@@ -45,25 +45,33 @@ To cleanly verify organization installation lifecycles (`gh-app-unofficial_insta
 - **`org-b` (Target Installation Organization, e.g., `target-org` / `GITHUB_TARGET_ORG`):** The dedicated static sandbox organization where the **Target App** is installed, updated, and uninstalled by Terraform, and where fixture test repositories (`test-repo-1`, `test-repo-2`) reside.
 
 ```mermaid
-graph LR
-    subgraph ORG_A ["org-a (App Owner Org: e.g. app-owner-org)"]
-        T_APP["Target App <br/> (GITHUB_APP_CLIENT_ID)"]
-    end
+flowchart TD
+    subgraph Enterprise ["GitHub Enterprise (GITHUB_ENTERPRISE_SLUG)"]
+        direction TB
 
-    subgraph ENT ["GitHub Enterprise"]
-        M_INST["Manager App Installation <br/> (GITHUB_APP_INSTALLATION_ID)"]
-    end
+        M_INST["Manager App<br/>(GITHUB_APP_INSTALLATION_ID)"]
 
-    subgraph ORG_B ["org-b (Target Installation Org: e.g. target-org)"]
-        INST["gh-app-unofficial_installation <br/> (Managed by Terraform)"]
-        TR1["test-repo-1"]
-        TR2["test-repo-2"]
-    end
+        subgraph ORG_A ["org-a (App Owner Org)"]
+            T_APP["Target App<br/>(GITHUB_APP_CLIENT_ID)"]
+        end
 
-    T_APP -->|"Installed & Managed on org-b"| INST
-    INST -->|"Repository Selection"| TR1
-    INST -->|"Repository Selection"| TR2
-    M_INST -->|"Authorizes Terraform / GITHUB_TOKEN <br/> to manage installations"| INST
+        subgraph ORG_B ["org-b (Target Sandbox Org: GITHUB_TARGET_ORG)"]
+            direction TB
+            INST["gh-app-unofficial_installation<br/>(Managed by Terraform)"]
+            
+            subgraph Repos ["Fixture Repositories"]
+                direction LR
+                TR1["test-repo-1"]
+                TR2["test-repo-2"]
+            end
+
+            INST --> TR1
+            INST --> TR2
+        end
+
+        M_INST -.->|"1. Authorizes GITHUB_TOKEN"| INST
+        T_APP -->|"2. Installed Onto"| INST
+    end
 ```
 
 ### 3.2 Pre-Provisioning Fixture Repositories (`org-b`)
