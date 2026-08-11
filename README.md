@@ -1,47 +1,72 @@
-# Terraform Provider for GitHub Apps (Unofficial)
+# Terraform Provider for GitHub App (Unofficial)
 
-A Terraform provider designed to manage GitHub App installations and list installation configurations. This provider is built using the modern [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework).
+[![Tests](https://github.com/google/terraform-provider-gh-app-unofficial/actions/workflows/test.yml/badge.svg)](https://github.com/google/terraform-provider-gh-app-unofficial/actions/workflows/test.yml)
+[![Acceptance Tests](https://github.com/google/terraform-provider-gh-app-unofficial/actions/workflows/acceptance.yml/badge.svg)](https://github.com/google/terraform-provider-gh-app-unofficial/actions/workflows/acceptance.yml)
+[![Terraform Registry](https://img.shields.io/badge/terraform-registry-purple?logo=terraform)](https://registry.terraform.io/providers/google/gh-app-unofficial/latest)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-blue.svg)](https://opensource.org/licenses/MPL-2.0)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/google/terraform-provider-gh-app-unofficial)](https://golang.org/doc/install)
 
-Using this provider, you can automate the installation and organization-level configuration of GitHub Apps, making it easier to manage app integrations dynamically across your enterprises and organizations.
+A Terraform provider designed to manage GitHub App installations and repository configurations at enterprise scale. Built using the modern [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework).
+
+Using this provider, platform and security teams can automate the installation, updating, and repository scoping of GitHub Apps across enterprise organizations declaratively, eliminating manual organization-level onboarding and personal access token sprawl.
+
+---
+
+## Architecture Overview
+
+This provider leverages enterprise-scoped administrative credentials to manage GitHub App installations across all organizations under a GitHub Enterprise account:
+
+```mermaid
+graph TD
+    subgraph GHE ["GitHub Enterprise Account"]
+        direction TB
+        MANAGER["Manager GitHub App<br/><b>Permissions:</b> Enterprise Organization Installations (Read & Write)"]
+        
+        subgraph ORG_A ["App Owner Organization (org-a)"]
+            TARGET_APP["Target GitHub App<br/><b>Client ID:</b> Iv1.0123456789abcdef"]
+        end
+
+        subgraph ORG_B ["Target Organization (org-b)"]
+            INST_B["gh-app-unofficial_installation<br/>(Repository Selection: selected)"]
+            R1["repo-alpha"]
+            R2["repo-beta"]
+            INST_B -->|Access Scoped To| R1
+            INST_B -->|Access Scoped To| R2
+        end
+
+        subgraph ORG_C ["Target Organization (org-c)"]
+            INST_C["gh-app-unofficial_installation<br/>(Repository Selection: all)"]
+        end
+    end
+
+    TF["Terraform Engine<br/>provider 'gh-app-unofficial'"] -->|"1. Authenticates using Manager Token"| MANAGER
+    TF -->|"2. Provisions & Manages Target App"| INST_B
+    TF -->|"3. Provisions & Manages Target App"| INST_C
+    TARGET_APP -.->|"Installed onto"| INST_B
+    TARGET_APP -.->|"Installed onto"| INST_C
+```
+
+---
 
 ## Requirements
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
-- [Go](https://golang.org/doc/install) >= 1.24
 
-## Building the Provider
+*(For developing, building, or contributing to the provider, see [DEVELOPMENT.md](./DEVELOPMENT.md) for Go and toolchain prerequisites).*
 
-1. Clone the repository
-1. Enter the repository directory
-1. Build the provider using the Go `install` command:
+---
 
-```shell
-go install
-```
+## Quick Start
 
-## Adding Dependencies
+### 1. Provider Configuration
 
-This provider uses [Go modules](https://github.com/golang/go/wiki/Modules).
-Please see the Go documentation for the most up to date information about using Go modules.
-
-To add a new dependency `github.com/author/dependency` to your Terraform provider:
-
-```shell
-go get github.com/author/dependency
-go mod tidy
-```
-
-Then commit the changes to `go.mod` and `go.sum`.
-
-## Using the Provider
-
-To configure the provider in your Terraform configurations, add the following block:
+Add the provider to your Terraform configuration:
 
 ```hcl
 terraform {
   required_providers {
     gh-app-unofficial = {
-      source  = "google/gh-app-unofficial" # (Or your custom registry source once published)
+      source  = "google/gh-app-unofficial"
       version = "~> 1.0"
     }
   }
@@ -50,93 +75,174 @@ terraform {
 provider "gh-app-unofficial" {
   enterprise_slug = "my-enterprise-slug"
 
-  # Optional: API access token (can also be set via GITHUB_TOKEN env var)
-  # token           = "your-installation-access-token"
+  # Recommended: Provide authentication via the GITHUB_TOKEN environment variable:
+  #   export GITHUB_TOKEN="<your-installation-access-token>"
+  #
+  # Or pass explicitly via a sensitive Terraform variable:
+  # token = var.github_token
 
   # Optional: For GitHub Enterprise Server (on-premise) or custom API endpoints
-  # (can also be set via GITHUB_BASE_URL, GITHUB_ENTERPRISE_BASE_URL, or GITHUB_API_URL env vars).
-  # Defaults to https://api.github.com/
-  # base_url        = "https://github.mycompany.com"
+  # (Defaults to https://api.github.com/). Can also be set via GITHUB_BASE_URL env var.
+  # base_url = "https://github.mycompany.com"
 }
 ```
 
-### Environment Variables
+### 2. Authentication & Configuration Parameters
 
-| Variable | Provider Attribute | Description |
-| :--- | :--- | :--- |
-| `GITHUB_TOKEN` | `token` | GitHub App Installation Access Token |
-| `GITHUB_BASE_URL` / `GITHUB_ENTERPRISE_BASE_URL` / `GITHUB_API_URL` | `base_url` | GitHub Enterprise Server Base URL (e.g. `https://github.mycompany.com`) |
+| Attribute | Type | Required | Environment Variable | Description |
+| :--- | :--- | :---: | :--- | :--- |
+| `enterprise_slug` | String | **Yes** | — | The URL-friendly slug of your GitHub Enterprise account (e.g. `my-enterprise`). |
+| `token` | String | No | `GITHUB_TOKEN` | A GitHub App Installation Access Token authorized with enterprise organization installation permissions. |
+| `base_url` | String | No | `GITHUB_BASE_URL`, `GITHUB_ENTERPRISE_BASE_URL`, `GITHUB_API_URL` | The base URL for GitHub API requests. Defaults to `https://api.github.com/`. Set this when using GitHub Enterprise Server. |
 
-## Developing the Provider
+---
 
-If you wish to work on the provider, you'll first need [Go](http://www.golang.org) installed on your machine (see [Requirements](#requirements) above).
+## Resource Usage
 
-To compile the provider, run `go install`. This will build the provider and put the provider binary in the `$GOPATH/bin` directory.
+### `gh-app-unofficial_installation`
 
-To generate or update documentation, run `make generate`.
+Manages a GitHub App installation on a target organization within your enterprise.
 
-In order to run the full suite of Acceptance tests, run `make testacc`.
+#### Example: Install App with Access to Selected Repositories
 
-*Note:* Acceptance tests create real resources, and often cost money to run.
+```hcl
+resource "gh-app-unofficial_installation" "security_scanner" {
+  target_org            = "engineering-org"
+  client_id             = "Iv1.0123456789abcdef"
+  repository_selection  = "selected"
+  selected_repositories = [
+    "frontend-service",
+    "backend-api",
+    "infrastructure-core"
+  ]
+}
 
-```shell
-make testacc
+output "installation_id" {
+  description = "The numeric ID of the app installation."
+  value       = gh-app-unofficial_installation.security_scanner.installation_id
+}
 ```
 
-## Local Development & Acceptance Testing
+#### Example: Install App with Access to All Repositories
 
-For full step-by-step developer onboarding, toolchain setup, dual-app GitHub App bootstrapping (`org-a` vs `org-b`), and 30-day enterprise trial rotation runbooks, see **[DEVELOPMENT.md](./DEVELOPMENT.md)**.
-> [!IMPORTANT]
-> **Required for Acceptance/Integration Tests:** Configuring the minimal `.env` file and the two-organization GitHub App structure described in `DEVELOPMENT.md` is **strictly required** for `make testacc` to authenticate with GitHub and execute live acceptance/integration tests successfully.
-
-### Unified Operating Model
-
-Both local interactive debugging (`dlv` / VS Code `F5`) and automated acceptance testing (`make testacc`) target the exact same static sandbox organization (`org-b` / `TF_VAR_target_org`) under your enterprise (`TF_VAR_enterprise_slug`) and inherit seamlessly from your minimal `.env` file:
-
-| Category | Manual Debugging & Dev Mode (`dlv` / VS Code F5) | Automated Acceptance Testing (`make testacc` / CI) |
-| :--- | :--- | :--- |
-| **Purpose** | Interactive development, attaching breakpoints (`dlv`) to local HCL examples (`examples/resources/gh-app-unofficial_installation`). | Automated, non-interactive CI/CD validation and regression testing against the static sandbox (`resource.Test`). |
-| **Target Organization (`org-b`)** | Static dedicated organization (`TF_VAR_target_org` in `.env`). | Static dedicated organization (`TF_VAR_target_org` / `GITHUB_TARGET_ORG`). Pre-check verifies test repositories exist. |
-| **App Authentication** | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` in `.env` to authenticate. | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` via `cmd/get-token` to mint `GITHUB_TOKEN`. |
-| **HCL Input Variables** | Uses `TF_VAR_enterprise_slug`, `TF_VAR_target_org`, `TF_VAR_client_id`, and `TF_EXAMPLE_DIR`. | Controlled by Go test strings (`testAccConfig`), inheriting target configuration directly from `TF_VAR_*` variables. |
-
-### Prerequisites
-*   Install the [Go extension for VS Code](https://marketplace.visualstudio.com/items?itemName=golang.Go).
-*   Install the Delve debugger: `go install github.com/go-delve/delve/cmd/dlv@latest`
-*   Create a `.env` file in the workspace root with your GitHub App credentials and test configurations (see [DEVELOPMENT.md](./DEVELOPMENT.md) for template).
-*   Create a `terraform.rc` file (or modify an existing one at `~/.terraformrc`) in the workspace root to point to your local Go bin directory (e.g. `~/go/bin`):
-    ```hcl
-    provider_installation {
-      dev_overrides {
-        "google/gh-app-unofficial" = "/path/to/your/home/go/bin"
-      }
-      direct {}
-    }
-    ```
-
-### Running & Testing (Dev Overrides)
-To test local changes with Terraform without breakpoints:
-1.  Use `Ctrl+Shift+P` -> **Run Task** -> select **`Terraform Plan (Verification Example)`** or **`Terraform Apply (Verification Example)`**.
-2.  This automatically builds the provider and runs Terraform using the local dev configuration.
-
-### Debugging the Provider
-To debug the provider with breakpoints (integrated VS Code workflow):
-1.  In VS Code, go to the **Run and Debug** view (`Ctrl+Shift+D`).
-2.  Select **`Debug Provider`** and press `F5`.
-3.  Select the Terraform command you want to run (`plan`, `apply`, or `destroy`) from the dropdown prompt at the top of the window.
-4.  VS Code will start the debugger in a background terminal task and automatically attach to it.
-5.  Switch to the **Terminal** tab in VS Code (where the `Start Headless Debugger` task is running), and press **`ENTER`** to run Terraform. Your breakpoints in VS Code will now be hit.
-
-### Debugging Tests
-To debug unit or acceptance tests:
-1.  Select **Debug Tests (Current File)** or **Debug Provider Acceptance Tests** in the Run and Debug view.
-2.  Press `F5` (automatically sets `TF_ACC=1`).
-
-### Troubleshooting: "operation not permitted" (Linux)
-If the debugger fails to launch with `operation not permitted`, run:
-```shell
-sudo sysctl -w kernel.yama.ptrace_scope=0
+```hcl
+resource "gh-app-unofficial_installation" "ci_bot" {
+  target_org           = "engineering-org"
+  client_id            = "Iv1.9876543210fedcba"
+  repository_selection = "all"
+}
 ```
-*(Resets on reboot. To make permanent, add `kernel.yama.ptrace_scope = 0` to `/etc/sysctl.d/10-ptrace.conf`)*
+
+#### Schema Summary
+
+- **Required Attributes:**
+  - `target_org` (String): The organization name where the GitHub App will be installed.
+  - `client_id` (String): The Client ID of the GitHub App to install.
+- **Optional Attributes:**
+  - `repository_selection` (String): Repository access policy. Must be either `"all"` or `"selected"`. Defaults to `"all"`.
+  - `selected_repositories` (Set of String): List of repository names the installation has access to. Required when `repository_selection = "selected"`.
+- **Read-Only Attributes:**
+  - `id` (String): Composite identifier in the format `<target_org>/<installation_id>`.
+  - `installation_id` (String): Numeric GitHub installation ID.
+  - `app_slug` (String): The URL slug of the installed GitHub App.
+  - `permissions` (Map of String): Permissions granted to the app installation.
+  - `events` (List of String): Webhook events configured for the app installation.
+  - `created_at` (String): Creation timestamp.
+  - `updated_at` (String): Last update timestamp.
+
+#### Importing Existing Installations
+
+Existing GitHub App installations can be imported into Terraform state using their composite identifier (`<target_org>/<installation_id>`):
+
+```shell
+terraform import gh-app-unofficial_installation.example "engineering-org/12345678"
+```
+
+---
+
+## Data Source Usage
+
+### `gh-app-unofficial_installations`
+
+Queries and lists all GitHub Apps currently installed in a target organization.
+
+```hcl
+data "gh-app-unofficial_installations" "all_apps" {
+  target_org = "engineering-org"
+}
+
+output "installed_app_slugs" {
+  description = "Slugs of all GitHub Apps installed in the organization."
+  value       = [for app in data.gh-app-unofficial_installations.all_apps.installations : app.app_slug]
+}
+```
+
+---
+
+## Common Recipes & Patterns
+
+### Multi-Organization Rollout (`for_each`)
+
+You can easily deploy a standardized security, compliance, or CI/CD GitHub App across multiple organizations:
+
+```hcl
+locals {
+  target_orgs = toset([
+    "payments-team",
+    "identity-team",
+    "data-platform"
+  ])
+}
+
+resource "gh-app-unofficial_installation" "enterprise_audit" {
+  for_each = local.target_orgs
+
+  target_org           = each.key
+  client_id            = var.audit_app_client_id
+  repository_selection = "all"
+}
+```
+
+### GitHub Enterprise Server (On-Premises)
+
+When managing installations on a self-hosted GitHub Enterprise Server (GHES) instance:
+
+```hcl
+provider "gh-app-unofficial" {
+  enterprise_slug = "internal-enterprise"
+  base_url        = "https://github.corp.example.com"
+  token           = var.ghes_manager_token
+}
+```
+
+---
+
+## Documentation
+
+Full generated schema documentation for the provider, resources, and data sources is available in the [`docs/`](./docs) directory:
+- [Provider Schema](./docs/index.md)
+- [`gh-app-unofficial_installation` Resource](./docs/resources/installation.md)
+- [`gh-app-unofficial_installations` Data Source](./docs/data-sources/installations.md)
+
+---
+
+## Development & Contributing
+
+If you wish to contribute to the provider, run offline unit tests, execute live acceptance tests against a sandbox organization, or debug using VS Code and Delve (`dlv`), please see our comprehensive developer guide:
+
+👉 **[DEVELOPMENT.md](./DEVELOPMENT.md)**
+
+For guidelines on contributor license agreements, code reviews, and our code of conduct, please review **[CONTRIBUTING.md](./CONTRIBUTING.md)**.
+
+---
+
+## License
+
+This project is licensed under the [Mozilla Public License 2.0 (MPL-2.0)](./LICENSE).
+
+---
+
+> [!NOTE]
+> **Disclaimer:** This is an unofficial Terraform provider and is not an officially supported Google LLC or GitHub product.
 
 
