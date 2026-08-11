@@ -2,7 +2,6 @@
 
 [![Tests](https://github.com/google/terraform-provider-gh-app-unofficial/actions/workflows/test.yml/badge.svg)](https://github.com/google/terraform-provider-gh-app-unofficial/actions/workflows/test.yml)
 [![Acceptance Tests](https://github.com/google/terraform-provider-gh-app-unofficial/actions/workflows/acceptance.yml/badge.svg)](https://github.com/google/terraform-provider-gh-app-unofficial/actions/workflows/acceptance.yml)
-[![Terraform Registry](https://img.shields.io/badge/terraform-registry-purple?logo=terraform)](https://registry.terraform.io/providers/google/gh-app-unofficial/latest)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-blue.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/google/terraform-provider-gh-app-unofficial)](https://golang.org/doc/install)
 
@@ -20,14 +19,14 @@ This provider leverages enterprise-scoped administrative credentials to manage G
 graph TD
     subgraph GHE ["GitHub Enterprise Account"]
         direction TB
-        MANAGER["Manager GitHub App<br/><b>Permissions:</b> Enterprise Organization Installations (Read & Write)"]
+        MANAGER["Manager GitHub App <br/> Permissions: Enterprise Organization Installations (Read & Write)"]
         
         subgraph ORG_A ["App Owner Organization (org-a)"]
-            TARGET_APP["Target GitHub App<br/><b>Client ID:</b> Iv1.0123456789abcdef"]
+            TARGET_APP["Target GitHub App <br/> Client ID: Iv1.0123456789abcdef"]
         end
 
         subgraph ORG_B ["Target Organization (org-b)"]
-            INST_B["gh-app-unofficial_installation<br/>(Repository Selection: selected)"]
+            INST_B["gh-app-unofficial_installation <br/> (Repository Selection: selected)"]
             R1["repo-alpha"]
             R2["repo-beta"]
             INST_B -->|Access Scoped To| R1
@@ -35,11 +34,11 @@ graph TD
         end
 
         subgraph ORG_C ["Target Organization (org-c)"]
-            INST_C["gh-app-unofficial_installation<br/>(Repository Selection: all)"]
+            INST_C["gh-app-unofficial_installation <br/> (Repository Selection: all)"]
         end
     end
 
-    TF["Terraform Engine<br/>provider 'gh-app-unofficial'"] -->|"1. Authenticates using Manager Token"| MANAGER
+    TF["Terraform Engine <br/> provider 'gh-app-unofficial'"] -->|"1. Authenticates using Manager Token"| MANAGER
     TF -->|"2. Provisions & Manages Target App"| INST_B
     TF -->|"3. Provisions & Manages Target App"| INST_C
     TARGET_APP -.->|"Installed onto"| INST_B

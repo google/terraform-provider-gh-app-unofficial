@@ -47,15 +47,15 @@ To cleanly verify organization installation lifecycles (`gh-app-unofficial_insta
 ```mermaid
 graph LR
     subgraph ORG_A ["org-a (App Owner Org: e.g. app-owner-org)"]
-        T_APP["Target App<br/>(GITHUB_APP_CLIENT_ID)"]
+        T_APP["Target App <br/> (GITHUB_APP_CLIENT_ID)"]
     end
 
     subgraph ENT ["GitHub Enterprise"]
-        M_INST["Manager App Installation<br/>(GITHUB_APP_INSTALLATION_ID)"]
+        M_INST["Manager App Installation <br/> (GITHUB_APP_INSTALLATION_ID)"]
     end
 
     subgraph ORG_B ["org-b (Target Installation Org: e.g. target-org)"]
-        INST["gh-app-unofficial_installation<br/>(Managed by Terraform)"]
+        INST["gh-app-unofficial_installation <br/> (Managed by Terraform)"]
         TR1["test-repo-1"]
         TR2["test-repo-2"]
     end
@@ -63,7 +63,7 @@ graph LR
     T_APP -->|"Installed & Managed on org-b"| INST
     INST -->|"Repository Selection"| TR1
     INST -->|"Repository Selection"| TR2
-    M_INST -->|"Authorizes Terraform / GITHUB_TOKEN<br/>to manage installations"| INST
+    M_INST -->|"Authorizes Terraform / GITHUB_TOKEN <br/> to manage installations"| INST
 ```
 
 ### 3.2 Pre-Provisioning Fixture Repositories (`org-b`)
@@ -203,14 +203,14 @@ The provider client (`internal/provider/provider.go`) is engineered for high con
 
 ```mermaid
 graph TD
-    TF_PLAN["Terraform Plan / Apply<br/>(Parallel Resource Reads)"] --> SF["singleflight.Group<br/>(Coalesces duplicate concurrent reads)"]
-    SF --> CACHE{"In-Memory TTL Cache<br/>(5s Window)"}
-    CACHE -->|"Cache Hit (Fresh)"| MEM["Return Deep Cloned Struct<br/>(0 API Calls, 0 JSON overhead)"]
-    CACHE -->|"Cache Expired / Miss"| ETAG["etagTransport<br/>(Conditional GET: If-None-Match)"]
-    ETAG --> API["GitHub Enterprise REST API<br/>(/enterprises/{slug}/...)"]
-    API -->|"HTTP 304 Not Modified"| HIT["Return Cached Struct<br/>(0 Rate Limit Cost)"]
+    TF_PLAN["Terraform Plan / Apply <br/> (Parallel Resource Reads)"] --> SF["singleflight.Group <br/> (Coalesces duplicate concurrent reads)"]
+    SF --> CACHE{"In-Memory TTL Cache <br/> (5s Window)"}
+    CACHE -->|"Cache Hit (Fresh)"| MEM["Return Deep Cloned Struct <br/> (0 API Calls, 0 JSON overhead)"]
+    CACHE -->|"Cache Expired / Miss"| ETAG["etagTransport <br/> (Conditional GET: If-None-Match)"]
+    ETAG --> API["GitHub Enterprise REST API <br/> (/enterprises/{slug}/...)"]
+    API -->|"HTTP 304 Not Modified"| HIT["Return Cached Struct <br/> (0 Rate Limit Cost)"]
     API -->|"HTTP 200 OK"| UPDATE["Update Cache Entry & ETag"]
-    MUT["Resource Mutations<br/>(Create / Update / Delete)"] -->|"InvalidateOrgCache(org)"| CACHE
+    MUT["Resource Mutations <br/> (Create / Update / Delete)"] -->|"InvalidateOrgCache(org)"| CACHE
 ```
 
 - **`singleflight.Group`**: Coalesces concurrent reads for the same organization into a single HTTP request across parallel Terraform worker goroutines.
