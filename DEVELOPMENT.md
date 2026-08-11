@@ -46,34 +46,41 @@ To cleanly verify organization installation lifecycles (`gh-app-unofficial_insta
 
 ```mermaid
 flowchart TD
-    subgraph Enterprise ["GitHub Enterprise (GITHUB_ENTERPRISE_SLUG)"]
+    subgraph Enterprise ["GitHub Enterprise Account"]
         direction TB
-
-        M_INST["`**Manager App**
-        (GITHUB_APP_INSTALLATION_ID)`"]
-
-        subgraph ORG_A ["org-a (App Owner Org)"]
-            T_APP["`**Target App**
-            (GITHUB_APP_CLIENT_ID)`"]
+        ENT_APP["`**Enterprise App**
+        (Terraform Manager)`"]
+        subgraph ORG_A ["org-a (App Owner)"]
+            TARGET_APP["`**Target App**
+            (Client ID: Iv1.xxx)`"]
         end
-
-        subgraph ORG_B ["org-b (Target Sandbox Org: GITHUB_TARGET_ORG)"]
+        subgraph ORG_B ["org-b (Target Organization)"]
             direction TB
-            INST["`**gh-app-unofficial_installation**
-            (Managed by Terraform)`"]
-            
-            subgraph Repos ["Fixture Repositories"]
-                direction LR
-                TR1["test-repo-1"]
-                TR2["test-repo-2"]
+            INST_B["`**Target App Installation**
+            (Repository Selection: selected)`"]
+            subgraph REPOS_B ["Repositories"]
+                direction TB
+                R1["`**repo-1**
+                (Access Granted)`"]
+                R2["`**repo-2**
+                (Access Granted)`"]
+                R3["`**repo-3**
+                (Excluded)`"]
             end
-
-            INST --> TR1
-            INST --> TR2
+            INST_B --> R1
+            INST_B --> R2
+            INST_B -.->|Excluded| R3
         end
 
-        M_INST -.->|"1. Authorizes GITHUB_TOKEN"| INST
-        T_APP -->|"2. Installed Onto"| INST
+        subgraph ORG_C ["org-c (Target Organization)"]
+            direction TB
+            INST_C["`**Target App Installation**
+            (Repository Selection: all)`"]
+        end
+        ENT_APP -.->|"1. Authorizes & Manages"| INST_B
+        ENT_APP -.->|"1. Authorizes & Manages"| INST_C
+        TARGET_APP -->|"2. Installed Onto"| INST_B
+        TARGET_APP -->|"2. Installed Onto"| INST_C
     end
 ```
 

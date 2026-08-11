@@ -13,18 +13,19 @@ Using this provider, platform and security teams can automate the installation, 
 
 ## Why This Provider?
 
-> Managing GitHub Apps across a multi-organization enterprise shouldn't require hundreds of personal access tokens or manual clicks.
+> Managing GitHub Apps across a multi-organization enterprise shouldn't require hundreds of personal access tokens or manual UI clicks.
 
-### The Problem: The Enterprise Multi-Org Automation Gap
-- **What is a GitHub App?**: GitHub Apps are first-class, dedicated machine identities. Unlike personal user accounts or Personal Access Tokens (PATs), GitHub Apps provide fine-grained scoped permissions, short-lived tokens, and explicit organization/repository boundaries. They are the industry standard for security scanners, CI/CD runners, and automation bots.
-- **The Multi-Org Challenge**: In a GitHub Enterprise with dozens or hundreds of organizations, deploying a required GitHub App (such as a compliance auditor or dependency scanner) is difficult to automate. The official `integrations/github` Terraform provider only manages installations on a per-organization basis, requiring individual **Organization Owner Personal Access Tokens** for *every single organization*.
-- **The Result**: Security teams and infrastructure engineers face personal access token sprawl, manual onboarding toil, and a lack of centralized governance over app topology.
+### The Problem: The Missing App Installation Resource
+- **What is a GitHub App?**: GitHub Apps are first-class, dedicated machine identities with fine-grained permissions, short-lived tokens, and explicit repository boundaries. They are the security gold standard for CI/CD runners, compliance scanners, and automated bots.
+- **The Gap in Official Tooling**: The official `integrations/github` Terraform provider **cannot install or uninstall GitHub Apps**. It lacks a resource to create or delete app installations (`resource "github_app_installation"` does not exist in the official provider). It only offers `github_app_installation_repositories`, which can only attach repositories to an app that an administrator has *already manually installed through the GitHub web UI*.
+- **The Multi-Org Challenge**: In a GitHub Enterprise with dozens or hundreds of organizations, deploying a required security app across every organization requires either repetitive manual clicking in the web UI for every organization, or managing dozens of individual Organization Owner Personal Access Tokens (PATs) across separate provider blocks.
 
 ### The Solution: Declarative Enterprise App Topology
 This provider bridges that gap by leveraging GitHub Enterprise's enterprise-level installation APIs (`/enterprises/{enterprise}/...`):
-- **Zero Token Sprawl**: Authenticate once using an enterprise-scoped administrative identity instead of collecting individual organization owner tokens.
-- **Declarative App Topology**: Define exactly which organizations and repositories have access to your GitHub Apps directly in Terraform HCL code.
-- **Continuous Drift Reconciliation**: Prevent out-of-band app uninstallations or permission modifications with standard `terraform plan` and `terraform apply`.
+- **Automated Installation Lifecycle**: Declare and manage the full installation lifecycle (`gh-app-unofficial_installation`), provisioning and uninstalling GitHub Apps across any enterprise organization automatically.
+- **Zero Token Sprawl**: Authenticate once using an enterprise-scoped administrative identity instead of maintaining individual organization owner tokens.
+- **Declarative App Topology**: Define exactly which organizations and repositories have access to your GitHub Apps (`all` vs `selected` repositories) directly in Terraform HCL code.
+- **Continuous Drift Reconciliation**: Prevent out-of-band app uninstallations or repository scope changes with standard `terraform plan` and `terraform apply`.
 - **Cloud & On-Premises Parity**: Fully supports both **GitHub Enterprise Cloud (GHEC)** and self-hosted **GitHub Enterprise Server (GHES)**.
 
 ---
@@ -50,9 +51,9 @@ flowchart TD
             direction TB
             INST_B["`**Target App Installation**
             (Repository Selection: selected)`"]
-            
-            subgraph Repos ["Repositories"]
-                direction LR
+
+            subgraph REPOS_B ["Repositories"]
+                direction TB
                 R1["`**repo-1**
                 (Access Granted)`"]
                 R2["`**repo-2**
@@ -61,12 +62,13 @@ flowchart TD
                 (Excluded)`"]
             end
 
-            INST_B --> R1
-            INST_B --> R2
-            INST_B -.->|Excluded| R3
+            INST_B --> REPOS_B
+            INST_B --> REPOS_B
+            INST_B -.->|Excluded| REPOS_B
         end
 
         subgraph ORG_C ["org-c (Target Organization)"]
+            direction TB
             INST_C["`**Target App Installation**
             (Repository Selection: all)`"]
         end
@@ -268,13 +270,10 @@ For guidelines on contributor license agreements, code reviews, and our code of 
 
 ---
 
-## License
+## License & Disclaimer
 
 This project is licensed under the [Mozilla Public License 2.0 (MPL-2.0)](./LICENSE).
 
----
-
-> [!NOTE]
-> **Disclaimer:** This is an unofficial Terraform provider and is not an officially supported Google LLC or GitHub product.
+*Disclaimer: This is an unofficial Terraform provider and is not an officially supported Google LLC or GitHub product.*
 
 
