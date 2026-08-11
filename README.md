@@ -19,30 +19,33 @@ This provider leverages enterprise-scoped administrative credentials to manage G
 graph TD
     subgraph GHE ["GitHub Enterprise Account"]
         direction TB
-        MANAGER["Manager GitHub App <br/> Permissions: Enterprise Organization Installations (Read & Write)"]
+        MANAGER["Manager GitHub App<br/>Enterprise Installations: Read & Write"]
         
         subgraph ORG_A ["App Owner Organization (org-a)"]
-            TARGET_APP["Target GitHub App <br/> Client ID: Iv1.0123456789abcdef"]
+            TARGET_APP["Target GitHub App<br/>Client ID: Iv1.0123456789abcdef"]
         end
 
-        subgraph ORG_B ["Target Organization (org-b)"]
-            INST_B["gh-app-unofficial_installation <br/> (Repository Selection: selected)"]
-            R1["repo-alpha"]
-            R2["repo-beta"]
-            INST_B -->|Access Scoped To| R1
-            INST_B -->|Access Scoped To| R2
-        end
+        subgraph ORGS ["Target Organizations"]
+            direction LR
+            subgraph ORG_B ["org-b"]
+                INST_B["gh-app-unofficial_installation<br/>(Repository Selection: selected)"]
+                R1["repo-alpha"]
+                R2["repo-beta"]
+                INST_B -->|Scopes| R1
+                INST_B -->|Scopes| R2
+            end
 
-        subgraph ORG_C ["Target Organization (org-c)"]
-            INST_C["gh-app-unofficial_installation <br/> (Repository Selection: all)"]
+            subgraph ORG_C ["org-c"]
+                INST_C["gh-app-unofficial_installation<br/>(Repository Selection: all)"]
+            end
         end
     end
 
-    TF["Terraform Engine <br/> provider 'gh-app-unofficial'"] -->|"1. Authenticates using Manager Token"| MANAGER
-    TF -->|"2. Provisions & Manages Target App"| INST_B
-    TF -->|"3. Provisions & Manages Target App"| INST_C
-    TARGET_APP -.->|"Installed onto"| INST_B
-    TARGET_APP -.->|"Installed onto"| INST_C
+    TF["Terraform Engine<br/>(gh-app-unofficial)"] -->|"1. Auth Token"| MANAGER
+    TF -->|"2. Manage"| INST_B
+    TF -->|"3. Manage"| INST_C
+    TARGET_APP -.->|"Installed Onto"| INST_B
+    TARGET_APP -.->|"Installed Onto"| INST_C
 ```
 
 ---
