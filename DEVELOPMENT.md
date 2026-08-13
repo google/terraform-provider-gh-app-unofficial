@@ -1,5 +1,9 @@
 # Local Development & Contributor Guide
 
+> [!NOTE]
+> **Looking to use this provider in Terraform?**
+> This guide is intended for developers compiling, testing, or contributing to the provider Go source code. If you simply want to use this provider in your infrastructure, please see the [README.md](./README.md#installation-pre-built-binaries) for pre-compiled binary installation instructions via GitHub Releases.
+
 This guide provides comprehensive, step-by-step instructions for setting up your local environment, understanding the dual-app testing architecture, executing offline unit tests and live acceptance tests, debugging the provider interactively with Delve and VS Code, and understanding the core provider runtime engine.
 
 ---

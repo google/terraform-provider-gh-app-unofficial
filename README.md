@@ -2,6 +2,7 @@
 
 [![Tests](https://github.com/google/terraform-provider-gh-app-unofficial/actions/workflows/test.yml/badge.svg)](https://github.com/google/terraform-provider-gh-app-unofficial/actions/workflows/test.yml)
 [![Acceptance Tests](https://github.com/google/terraform-provider-gh-app-unofficial/actions/workflows/acceptance.yml/badge.svg)](https://github.com/google/terraform-provider-gh-app-unofficial/actions/workflows/acceptance.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/google/terraform-provider-gh-app-unofficial?color=blue&logo=github)](https://github.com/google/terraform-provider-gh-app-unofficial/releases)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-blue.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/google/terraform-provider-gh-app-unofficial)](https://golang.org/doc/install)
 
@@ -87,7 +88,38 @@ flowchart TD
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
 
-*(For developing, building, or contributing to the provider, see [DEVELOPMENT.md](./DEVELOPMENT.md) for Go and toolchain prerequisites).*
+> [!TIP]
+> **Using the Provider**: You do **not** need to clone this repository or install Go. Download pre-compiled provider binaries directly from [GitHub Releases](https://github.com/google/terraform-provider-gh-app-unofficial/releases) (see [Installation](#installation) below).
+>
+> **Developing / Contributing**: If you wish to compile from source, execute acceptance tests, or contribute, see [DEVELOPMENT.md](./DEVELOPMENT.md).
+
+---
+
+## Installation (Pre-built Binaries)
+
+Pre-compiled provider binaries for Linux, macOS (Intel & Apple Silicon), and Windows are published on [GitHub Releases](https://github.com/google/terraform-provider-gh-app-unofficial/releases).
+
+1. Download the archive for your operating system and architecture from the [Latest Release](https://github.com/google/terraform-provider-gh-app-unofficial/releases/latest).
+2. Extract the binary into Terraform's user plugin directory:
+
+   **Linux / macOS:**
+   ```shell
+   # Replace <VERSION> with the release version (e.g. 0.1.0) and <OS_ARCH> with your architecture (e.g. linux_amd64, darwin_arm64)
+   mkdir -p ~/.terraform.d/plugins/registry.terraform.io/google/gh-app-unofficial/<VERSION>/<OS_ARCH>/
+   mv terraform-provider-gh-app-unofficial_v* ~/.terraform.d/plugins/registry.terraform.io/google/gh-app-unofficial/<VERSION>/<OS_ARCH>/
+   ```
+
+   **Windows:**
+   ```cmd
+   mkdir "%APPDATA%\terraform.d\plugins\registry.terraform.io\google\gh-app-unofficial\<VERSION>\<OS_ARCH>"
+   move terraform-provider-gh-app-unofficial_v*.exe "%APPDATA%\terraform.d\plugins\registry.terraform.io\google\gh-app-unofficial\<VERSION>\<OS_ARCH>"
+   ```
+
+3. Initialize Terraform in your project directory:
+   ```shell
+   terraform init
+   ```
+   Terraform will automatically discover and load the local binary.
 
 ---
 
@@ -102,7 +134,7 @@ terraform {
   required_providers {
     gh-app-unofficial = {
       source  = "google/gh-app-unofficial"
-      version = "~> 1.0"
+      version = ">= 0.1.0" # Match the version of your downloaded release binary
     }
   }
 }
