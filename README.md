@@ -37,51 +37,36 @@ This diagram illustrates how an Enterprise Manager App authorizes Terraform to d
 
 ```mermaid
 flowchart TD
-    %% Styling Classes
-    classDef tf fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1;
-    classDef ent fill:#f8fafc,stroke:#64748b,stroke-width:2px,stroke-dasharray: 4 4,color:#334155;
-    classDef manager fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e;
-    classDef target fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#15803d;
-    classDef org fill:#f1f5f9,stroke:#94a3b8,stroke-width:1.5px,color:#1e293b;
-    classDef repo fill:#ffffff,stroke:#cbd5e1,stroke-width:1.5px,color:#334155;
-    classDef excluded fill:#fef2f2,stroke:#f87171,stroke-width:1px,stroke-dasharray: 2 2,color:#991b1b;
-
-    TF["Terraform Configuration<br/><code>gh-app-unofficial_installation</code>"]:::tf
-
-    subgraph ENT ["GitHub Enterprise Account"]
+    subgraph Enterprise ["Enterprise"]
         direction TB
-        MGR["Enterprise Manager App<br/><i>(Admin Permissions)</i>"]:::manager
-        
-        subgraph ORG_A ["Organization A (App Publisher)"]
-            TAPP["Target GitHub App<br/><code>Client ID: Iv1.xxx</code>"]:::target
+
+        MGR["Enterprise App<br/>(Terraform)"]
+
+        subgraph ORG_A ["org-a (App Owner)"]
+            TARGET_APP["Target App"]
         end
 
-        subgraph ORG_B ["Organization B (Production Org)"]
-            direction TB
-            INST_B["Target App Installation<br/><code>repository_selection = 'selected'</code>"]:::target
-            subgraph REPOS_B ["Scoped Repositories"]
-                R1["repo-alpha (Active)"]:::repo
-                R2["repo-beta (Active)"]:::repo
-                R3["repo-gamma (Excluded)"]:::excluded
-            end
+        subgraph ORG_B ["org-b"]
+            INST_B["Target App Installation"]
+            R1[("repo-1")]
+            R2[("repo-2")]
+            R3[("repo-3")]
+
             INST_B --> R1
             INST_B --> R2
-            INST_B -.->|No Access| R3
+            INST_B -.-> R3
         end
 
-        subgraph ORG_C ["Organization C (Platform Org)"]
-            INST_C["Target App Installation<br/><code>repository_selection = 'all'</code><br/><i>(All Repositories Granted)</i>"]:::target
+        subgraph ORG_C ["org-c"]
+            INST_C["Target App Installation"]
         end
+
+        MGR -.-> INST_B
+        MGR -.-> INST_C
+
+        TARGET_APP --> INST_B
+        TARGET_APP --> INST_C
     end
-
-    TF -->|"1. Declares State & Auth"| MGR
-    MGR -.->|"2. Enterprise API Provisioning"| INST_B
-    MGR -.->|"2. Enterprise API Provisioning"| INST_C
-    TAPP ==>|"3. Deploys Identity"| INST_B
-    TAPP ==>|"3. Deploys Identity"| INST_C
-
-    class ENT ent;
-    class ORG_A,ORG_B,ORG_C org;
 ```
 
 ---

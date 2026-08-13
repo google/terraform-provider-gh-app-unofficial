@@ -49,44 +49,36 @@ To cleanly verify organization installation lifecycles (`gh-app-unofficial_insta
 - **`org-b` (Target Installation Organization, e.g., `target-org` / `GITHUB_TARGET_ORG`):** The dedicated static sandbox organization where the **Target App** is installed, updated, and uninstalled by Terraform, and where fixture test repositories (`test-repo-1`, `test-repo-2`) reside.
 
 ```mermaid
-flowchart LR
-    classDef runner fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1;
-    classDef auth fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e;
-    classDef org fill:#f1f5f9,stroke:#94a3b8,stroke-width:1.5px,color:#1e293b;
-    classDef app fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#15803d;
-    classDef repo fill:#ffffff,stroke:#cbd5e1,stroke-width:1.5px,color:#334155;
-
-    subgraph LOCAL ["Local Workstation / CI"]
-        RUNNER["Test Runner<br/><code>make testacc</code>"]:::runner
-        TOKEN_GEN["cmd/get-token<br/><i>RS256 JWT Minting</i>"]:::auth
+flowchart TD
+    subgraph LOCAL ["Local / CI"]
+        RUNNER["Test Runner<br/>(make testacc)"]
+        TOKEN["cmd/get-token"]
     end
 
-    subgraph ENTERPRISE ["GitHub Enterprise Account"]
+    subgraph Enterprise ["Enterprise"]
         direction TB
-        MGR_INSTALL["Manager App Installation<br/><i>(Enterprise Scope)</i>"]:::auth
+        MGR["Manager App<br/>(Enterprise Token)"]
 
-        subgraph ORG_A ["org-a (App Owner & Registry)"]
-            TARGET_APP["Target App Definition<br/><code>GITHUB_APP_CLIENT_ID</code><br/><i>Defines App Permissions (e.g. Metadata, Contents)</i>"]:::app
+        subgraph ORG_A ["org-a (App Owner)"]
+            TARGET_APP["Target App<br/>(Permissions Defined)"]
         end
 
-        subgraph ORG_B ["org-b (Static Sandbox)"]
-            direction TB
-            INST["Target App Installation<br/><i>(Created / Tested / Swept)</i>"]:::app
-            R1["fixture: test-repo-1"]:::repo
-            R2["fixture: test-repo-2"]:::repo
+        subgraph ORG_B ["org-b (Test Sandbox)"]
+            INST["Target App Installation"]
+            R1[("test-repo-1")]
+            R2[("test-repo-2")]
+
             INST --> R1
             INST --> R2
         end
+
+        MGR -.-> INST
+        TARGET_APP --> INST
     end
 
-    TOKEN_GEN -->|"Sign JWT with PEM"| MGR_INSTALL
-    MGR_INSTALL -->|"Mint GITHUB_TOKEN"| RUNNER
-    RUNNER -->|"1. Pre-Sweep Leftovers"| ORG_B
-    RUNNER -->|"2. 9-Step Lifecycle Test"| INST
-    TARGET_APP -.->|"Installed Onto (Inherits Defined Permissions)"| INST
-
-    class ENTERPRISE org;
-    class ORG_A,ORG_B org;
+    TOKEN --> MGR
+    MGR --> RUNNER
+    RUNNER --> INST
 ```
 
 ### 3.2 Pre-Provisioning Fixture Repositories (`org-b`)
@@ -227,35 +219,24 @@ The provider client (`internal/provider/provider.go`) is engineered for high con
 
 ```mermaid
 flowchart TD
-    classDef tf fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1;
-    classDef internal fill:#f1f5f9,stroke:#64748b,stroke-width:2px,color:#1e293b;
-    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e;
-    classDef fast fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#15803d;
-    classDef http fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#5b21b6;
-    classDef mutate fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#991b1b;
+    TF["Terraform Plan / Apply"]
 
-    TF["Terraform Plan / Apply<br/><i>(Parallel Goroutines)</i>"]:::tf
-    MUT["Resource Mutations<br/><code>Create / Update / Delete</code>"]:::mutate
-
-    subgraph ENGINE ["Provider Runtime Engine (internal/provider)"]
-        SF["singleflight.Group<br/><i>Coalesces concurrent org reads</i>"]:::internal
-        CACHE{"In-Memory TTL Cache<br/><i>5-Second Window</i>"}:::cache
-        FAST_PATH["Return Deep-Cloned Struct<br/><b>0 HTTP Calls | 0ms</b>"]:::fast
-        ETAG["etagTransport RoundTripper<br/><i>Injects 'If-None-Match'</i>"]:::http
+    subgraph Engine ["Provider Client (internal/provider)"]
+        SF["singleflight.Group<br/>(Request Coalescing)"]
+        CACHE{"In-Memory Cache<br/>(5s TTL)"}
+        FAST["Cached Struct<br/>(0 API Calls)"]
+        ETAG["etagTransport<br/>(If-None-Match)"]
     end
 
-    GH["GitHub Enterprise REST API<br/><code>/enterprises/{slug}/...</code>"]:::http
+    API["GitHub REST API"]
 
     TF --> SF
     SF --> CACHE
-    CACHE -->|"Fresh Hit"| FAST_PATH
-    CACHE -->|"Cache Expired / Miss"| ETAG
-    ETAG -->|"Conditional GET"| GH
-    GH -->|"HTTP 304 Not Modified"| FAST_PATH
-    GH -->|"HTTP 200 OK"| UPDATE["Update Cache & ETag Map"]:::cache
-    MUT -->|"InvalidateOrgCache(target_org)"| CACHE
-
-    class ENGINE internal;
+    CACHE -->|"Fresh Hit"| FAST
+    CACHE -->|"Miss / Expired"| ETAG
+    ETAG --> API
+    API -->|"304 Not Modified"| FAST
+    API -->|"200 OK"| CACHE
 ```
 
 - **`singleflight.Group`**: Coalesces concurrent reads for the same organization into a single HTTP request across parallel Terraform worker goroutines.
