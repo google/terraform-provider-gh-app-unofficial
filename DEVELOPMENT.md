@@ -39,7 +39,7 @@ Ensure the following tools are installed on your workstation:
 
 ## 3. Dual-App Testing Architecture
 
-Acceptance testing (`make testacc` / CI) and interactive debugging (`dlv`) require credentials for **two distinct GitHub Apps** operating across a two-organization structure under a GitHub Enterprise account (`GITHUB_ENTERPRISE_SLUG`).
+Acceptance testing (`make testacc` / action based workflow) and interactive debugging (`dlv`) require credentials for **two distinct GitHub Apps** operating across a two-organization structure under a GitHub Enterprise account (`GITHUB_ENTERPRISE_SLUG`).
 
 ### 3.1 Two-Organization Model (`org-a` vs. `org-b`)
 
@@ -50,17 +50,12 @@ To cleanly verify organization installation lifecycles (`gh-app-unofficial_insta
 
 ```mermaid
 flowchart TD
-    subgraph LOCAL ["Local / CI"]
-        RUNNER["Test Runner<br/>(make testacc)"]
-        TOKEN["cmd/get-token"]
-    end
-
     subgraph Enterprise ["Enterprise"]
         direction TB
-        MGR["Manager App<br/>(Enterprise Token)"]
+        MGR["Manager App <br/>(Enterprise Token)"]
 
         subgraph ORG_A ["org-a (App Owner)"]
-            TARGET_APP["Target App<br/>(Permissions Defined)"]
+            TARGET_APP["Target App <br/>(Permissions Defined)"]
         end
 
         subgraph ORG_B ["org-b (Test Sandbox)"]
@@ -75,10 +70,6 @@ flowchart TD
         MGR -.-> INST
         TARGET_APP --> INST
     end
-
-    TOKEN --> MGR
-    MGR --> RUNNER
-    RUNNER --> INST
 ```
 
 ### 3.2 Pre-Provisioning Fixture Repositories (`org-b`)
@@ -222,10 +213,10 @@ flowchart TD
     TF["Terraform Plan / Apply"]
 
     subgraph Engine ["Provider Client (internal/provider)"]
-        SF["singleflight.Group<br/>(Request Coalescing)"]
-        CACHE{"In-Memory Cache<br/>(5s TTL)"}
-        FAST["Cached Struct<br/>(0 API Calls)"]
-        ETAG["etagTransport<br/>(If-None-Match)"]
+        SF["singleflight.Group <br/>(Request Coalescing)"]
+        CACHE{"In-Memory Cache <br/>(5s TTL)"}
+        FAST["Cached Struct <br/>(0 API Calls)"]
+        ETAG["etagTransport <br/>(If-None-Match)"]
     end
 
     API["GitHub REST API"]
