@@ -40,7 +40,7 @@ flowchart TD
     subgraph Enterprise ["Enterprise"]
         direction TB
 
-        MGR["Enterprise App<br/>(Terraform)"]
+        MGR["Enterprise App <br/>(Terraform)"]
 
         subgraph ORG_A ["org-a (App Owner)"]
             TARGET_APP["Target App"]
