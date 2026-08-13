@@ -43,49 +43,50 @@ Acceptance testing (`make testacc` / CI) and interactive debugging (`dlv`) requi
 
 ### 3.1 Two-Organization Model (`org-a` vs. `org-b`)
 
-To cleanly verify organization installation lifecycles (`gh-app-unofficial_installation`), our testing workflow separates the organization where the Target App is owned (`org-a`) from the target sandbox organization where the app is installed and managed (`org-b`):
+To cleanly verify organization installation lifecycles (`gh-app-unofficial_installation`), our testing workflow separates the organization where the Target App and its permissions are defined (`org-a`) from the target sandbox organization where the app is installed and managed (`org-b`):
 
-- **`org-a` (App Owner Organization, e.g., `app-owner-org`):** The organization where the **Target App** (`GITHUB_APP_CLIENT_ID`) is registered and owned.
+- **`org-a` (App Owner & Registry Organization, e.g., `app-owner-org`):** The organization where the **Target App** (`GITHUB_APP_CLIENT_ID`) is registered, owned, and configured. The app permissions defined here (e.g. `Metadata: Read-only`) determine the access rights granted when the app is installed onto other organizations.
 - **`org-b` (Target Installation Organization, e.g., `target-org` / `GITHUB_TARGET_ORG`):** The dedicated static sandbox organization where the **Target App** is installed, updated, and uninstalled by Terraform, and where fixture test repositories (`test-repo-1`, `test-repo-2`) reside.
 
 ```mermaid
-flowchart TD
-    subgraph Enterprise ["GitHub Enterprise Account"]
+flowchart LR
+    classDef runner fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1;
+    classDef auth fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e;
+    classDef org fill:#f1f5f9,stroke:#94a3b8,stroke-width:1.5px,color:#1e293b;
+    classDef app fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#15803d;
+    classDef repo fill:#ffffff,stroke:#cbd5e1,stroke-width:1.5px,color:#334155;
+
+    subgraph LOCAL ["Local Workstation / CI"]
+        RUNNER["Test Runner<br/><code>make testacc</code>"]:::runner
+        TOKEN_GEN["cmd/get-token<br/><i>RS256 JWT Minting</i>"]:::auth
+    end
+
+    subgraph ENTERPRISE ["GitHub Enterprise Account"]
         direction TB
-        ENT_APP["`**Enterprise App**
-        (Terraform Manager)`"]
-        subgraph ORG_A ["org-a (App Owner)"]
-            TARGET_APP["`**Target App**
-            (Client ID: Iv1.xxx)`"]
-        end
-        subgraph ORG_B ["org-b (Target Organization)"]
-            direction TB
-            INST_B["`**Target App Installation**
-            (Repository Selection: selected)`"]
-            subgraph REPOS_B ["Repositories"]
-                direction TB
-                R1["`**repo-1**
-                (Access Granted)`"]
-                R2["`**repo-2**
-                (Access Granted)`"]
-                R3["`**repo-3**
-                (Excluded)`"]
-            end
-            INST_B --> R1
-            INST_B --> R2
-            INST_B -.->|Excluded| R3
+        MGR_INSTALL["Manager App Installation<br/><i>(Enterprise Scope)</i>"]:::auth
+
+        subgraph ORG_A ["org-a (App Owner & Registry)"]
+            TARGET_APP["Target App Definition<br/><code>GITHUB_APP_CLIENT_ID</code><br/><i>Defines App Permissions (e.g. Metadata, Contents)</i>"]:::app
         end
 
-        subgraph ORG_C ["org-c (Target Organization)"]
+        subgraph ORG_B ["org-b (Static Sandbox)"]
             direction TB
-            INST_C["`**Target App Installation**
-            (Repository Selection: all)`"]
+            INST["Target App Installation<br/><i>(Created / Tested / Swept)</i>"]:::app
+            R1["fixture: test-repo-1"]:::repo
+            R2["fixture: test-repo-2"]:::repo
+            INST --> R1
+            INST --> R2
         end
-        ENT_APP -.->|"1. Authorizes & Manages"| INST_B
-        ENT_APP -.->|"1. Authorizes & Manages"| INST_C
-        TARGET_APP -->|"2. Installed Onto"| INST_B
-        TARGET_APP -->|"2. Installed Onto"| INST_C
     end
+
+    TOKEN_GEN -->|"Sign JWT with PEM"| MGR_INSTALL
+    MGR_INSTALL -->|"Mint GITHUB_TOKEN"| RUNNER
+    RUNNER -->|"1. Pre-Sweep Leftovers"| ORG_B
+    RUNNER -->|"2. 9-Step Lifecycle Test"| INST
+    TARGET_APP -.->|"Installed Onto (Inherits Defined Permissions)"| INST
+
+    class ENTERPRISE org;
+    class ORG_A,ORG_B org;
 ```
 
 ### 3.2 Pre-Provisioning Fixture Repositories (`org-b`)
@@ -115,6 +116,7 @@ The Target App is the child application owned inside `org-a` (`app-owner-org`) w
 1. Create a GitHub App inside **`org-a` (`app-owner-org`)**.
 2. Configure permissions:
    - **Repository Permissions** -> **Metadata**: `Read-only` (mandatory default permission for GitHub Apps).
+   - *Note*: Any repository permissions configured on the Target App in `org-a` define the permission boundary granted to the app when installed across enterprise organizations.
 3. Ensure the app settings allow installation on other organizations within your enterprise.
 4. Record its Client ID (`GITHUB_APP_CLIENT_ID`).
 
@@ -224,23 +226,36 @@ make testacc
 The provider client (`internal/provider/provider.go`) is engineered for high concurrency safety, fast performance, and zero rate-limit waste:
 
 ```mermaid
-graph TD
-    TF_PLAN["`**Terraform Plan / Apply**
-    (Parallel Resource Reads)`"] --> SF["`**singleflight.Group**
-    (Coalesces duplicate concurrent reads)`"]
-    SF --> CACHE{"`**In-Memory TTL Cache**
-    (5s Window)`"}
-    CACHE -->|"Cache Hit (Fresh)"| MEM["`**Return Deep Cloned Struct**
-    (0 API Calls, 0 JSON overhead)`"]
-    CACHE -->|"Cache Expired / Miss"| ETAG["`**etagTransport**
-    (Conditional GET: If-None-Match)`"]
-    ETAG --> API["`**GitHub Enterprise REST API**
-    (/enterprises/{slug}/...)`"]
-    API -->|"HTTP 304 Not Modified"| HIT["`**Return Cached Struct**
-    (0 Rate Limit Cost)`"]
-    API -->|"HTTP 200 OK"| UPDATE["Update Cache Entry & ETag"]
-    MUT["`**Resource Mutations**
-    (Create / Update / Delete)`"] -->|"InvalidateOrgCache(org)"| CACHE
+flowchart TD
+    classDef tf fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1;
+    classDef internal fill:#f1f5f9,stroke:#64748b,stroke-width:2px,color:#1e293b;
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e;
+    classDef fast fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#15803d;
+    classDef http fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#5b21b6;
+    classDef mutate fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#991b1b;
+
+    TF["Terraform Plan / Apply<br/><i>(Parallel Goroutines)</i>"]:::tf
+    MUT["Resource Mutations<br/><code>Create / Update / Delete</code>"]:::mutate
+
+    subgraph ENGINE ["Provider Runtime Engine (internal/provider)"]
+        SF["singleflight.Group<br/><i>Coalesces concurrent org reads</i>"]:::internal
+        CACHE{"In-Memory TTL Cache<br/><i>5-Second Window</i>"}:::cache
+        FAST_PATH["Return Deep-Cloned Struct<br/><b>0 HTTP Calls | 0ms</b>"]:::fast
+        ETAG["etagTransport RoundTripper<br/><i>Injects 'If-None-Match'</i>"]:::http
+    end
+
+    GH["GitHub Enterprise REST API<br/><code>/enterprises/{slug}/...</code>"]:::http
+
+    TF --> SF
+    SF --> CACHE
+    CACHE -->|"Fresh Hit"| FAST_PATH
+    CACHE -->|"Cache Expired / Miss"| ETAG
+    ETAG -->|"Conditional GET"| GH
+    GH -->|"HTTP 304 Not Modified"| FAST_PATH
+    GH -->|"HTTP 200 OK"| UPDATE["Update Cache & ETag Map"]:::cache
+    MUT -->|"InvalidateOrgCache(target_org)"| CACHE
+
+    class ENGINE internal;
 ```
 
 - **`singleflight.Group`**: Coalesces concurrent reads for the same organization into a single HTTP request across parallel Terraform worker goroutines.
