@@ -131,23 +131,77 @@ TF_VAR_selected_repositories='["test-repo-1", "test-repo-2"]'
 > [!NOTE]
 > **Why CI uses `GH_` instead of `GITHUB_`:** GitHub Actions strictly reserves the `GITHUB_` prefix for system-defined environment variables and secrets (like `GITHUB_TOKEN`, `GITHUB_ACTOR`). Because GitHub blocks creating custom repository secrets starting with `GITHUB_`, our automated CI workflow (`.github/workflows/acceptance.yml`) uses the `GH_` prefix (`GH_APP_ID`, `GH_APP_PRIVATE_KEY`, `GH_ENTERPRISE_SLUG`), while local `.env` execution (`make testacc`) uses standard `GITHUB_*` variables.
 
-### 4.2 Dev Overrides (`terraform.rc`)
+### 4.2 Provider Installation & CLI Configuration (`dev_overrides` vs `filesystem_mirror`)
 
-To test local changes with the `terraform` CLI without publishing to a registry, create a `terraform.rc` file (or configure `~/.terraformrc`) pointing to your local Go binary directory (e.g. `~/go/bin`):
+Because this provider is distributed as an **unofficial provider** (not published to `registry.terraform.io`), the Terraform CLI must be configured to locate the binary. Depending on your use case, choose between **Developer Overrides** and **Filesystem Mirrors**:
 
-```hcl
-provider_installation {
-  dev_overrides {
-    "google/gh-app-unofficial" = "/path/to/your/home/go/bin"
-  }
-  direct {}
-}
-```
+#### 4.2.1 Option A: Fast Local Developer Overrides (`dev_overrides`)
 
-Set the environment variable when running Terraform commands:
-```shell
-export TF_CLI_CONFIG_FILE="$PWD/terraform.rc"
-```
+Ideal for active Go development, compiling from source, and interactive debugging with Delve:
+
+1. Compile and install the binary to `$GOPATH/bin`:
+   ```shell
+   make install
+   ```
+2. Configure `~/.terraformrc` (or create a local `terraform.rc` in the workspace root):
+   ```hcl
+   provider_installation {
+     dev_overrides {
+       "google/gh-app-unofficial" = "/path/to/your/home/go/bin"
+     }
+     direct {}
+   }
+   ```
+3. If using a local `terraform.rc`, export the configuration path:
+   ```shell
+   export TF_CLI_CONFIG_FILE="$PWD/terraform.rc"
+   ```
+
+> [!NOTE]
+> `dev_overrides` runs the local binary directly and **bypasses `terraform init`**, version constraints, and `.terraform.lock.hcl`.
+
+---
+
+#### 4.2.2 Option B: Production & CI/CD Filesystem Mirror (`filesystem_mirror`)
+
+Required for production repositories (e.g. `google-infra-github`), automated CI/CD pipelines (e.g. GitHub Actions), and testing pre-built release binaries that require `terraform init` and lockfile validation:
+
+1. Place the compiled binary into the standard plugin hierarchy:
+   ```shell
+   TARGET_DIR="${HOME}/.terraform.d/plugins/registry.terraform.io/google/gh-app-unofficial/0.1.0/linux_amd64"
+   mkdir -p "${TARGET_DIR}"
+   cp /path/to/terraform-provider-gh-app-unofficial_v0.1.0 "${TARGET_DIR}/"
+   ```
+
+2. Configure `~/.terraformrc` to route `google/gh-app-unofficial` to the filesystem mirror while excluding it from remote registry queries (preventing `404 Provider not found` errors):
+   ```hcl
+   provider_installation {
+     filesystem_mirror {
+       path    = "/path/to/your/home/.terraform.d/plugins"
+       include = ["registry.terraform.io/google/gh-app-unofficial"]
+     }
+     direct {
+       exclude = ["registry.terraform.io/google/gh-app-unofficial"]
+     }
+   }
+   ```
+
+3. Run `terraform init` in your Terraform root module. Terraform will calculate the `h1:` cryptographic checksum and generate `.terraform.lock.hcl`.
+
+---
+
+#### 4.2.3 Multi-Platform Lockfile Strategy (`.terraform.lock.hcl`)
+
+When collaborating across different operating systems (e.g., macOS Apple Silicon developers and Linux AMD64 CI runners):
+- Running `terraform init` calculates the `h1:` SHA-256 hash for the **current local platform** and appends it to `.terraform.lock.hcl`.
+- To generate lockfile checksums for multiple platforms without running `init` on each OS, place all target OS/arch binaries into your local mirror directory and run:
+  ```shell
+  terraform providers lock \
+    -platform=linux_amd64 \
+    -platform=darwin_arm64 \
+    -platform=darwin_amd64
+  ```
+- Always commit `.terraform.lock.hcl` to version control alongside your `.tf` files.
 
 ---
 

@@ -82,31 +82,69 @@ flowchart TD
 
 ---
 
-## Installation (Pre-built Binaries)
+## Installation
 
-Pre-compiled provider binaries for Linux, macOS (Intel & Apple Silicon), and Windows are published on [GitHub Releases](https://github.com/google/terraform-provider-gh-app-unofficial/releases).
+Pre-compiled binaries for Linux, macOS, and Windows are available on [GitHub Releases](https://github.com/google/terraform-provider-gh-app-unofficial/releases/latest).
 
-1. Download the archive for your operating system and architecture from the [Latest Release](https://github.com/google/terraform-provider-gh-app-unofficial/releases/latest).
-2. Extract the binary into Terraform's user plugin directory:
+Because this provider is distributed as an **unofficial release** (and not published to HashiCorp's public registry), select the installation method that fits your workflow:
 
-   **Linux / macOS:**
-   ```shell
-   # Replace <VERSION> with the release version (e.g. 0.1.0) and <OS_ARCH> with your architecture (e.g. linux_amd64, darwin_arm64)
-   mkdir -p ~/.terraform.d/plugins/registry.terraform.io/google/gh-app-unofficial/<VERSION>/<OS_ARCH>/
-   mv terraform-provider-gh-app-unofficial_v* ~/.terraform.d/plugins/registry.terraform.io/google/gh-app-unofficial/<VERSION>/<OS_ARCH>/
+### Option A: Quick Local Setup (Recommended for Developers)
+
+The fastest way to use the provider locally is using Terraform's `dev_overrides`, which runs the binary directly without requiring `terraform init` or complex directories:
+
+1. Download the release binary for your operating system and place it in a local directory (e.g. `~/bin` or `~/go/bin`):
+   ```bash
+   mkdir -p ~/bin
+   # Download and extract the release binary into ~/bin/terraform-provider-gh-app-unofficial
    ```
 
-   **Windows:**
-   ```cmd
-   mkdir "%APPDATA%\terraform.d\plugins\registry.terraform.io\google\gh-app-unofficial\<VERSION>\<OS_ARCH>"
-   move terraform-provider-gh-app-unofficial_v*.exe "%APPDATA%\terraform.d\plugins\registry.terraform.io\google\gh-app-unofficial\<VERSION>\<OS_ARCH>"
+2. Add a `dev_overrides` block to your `~/.terraformrc` (or `%APPDATA%\terraform.rc` on Windows):
+   ```hcl
+   provider_installation {
+     dev_overrides {
+       "google/gh-app-unofficial" = "/path/to/your/home/bin"
+     }
+     direct {}
+   }
    ```
 
-3. Initialize Terraform in your project directory:
-   ```shell
-   terraform init
-   ```
-   Terraform will automatically discover and load the local binary.
+3. Run `terraform plan` or `terraform apply` directly in your project. Terraform will execute the local binary immediately (bypassing `terraform init`).
+
+---
+
+### Option B: Production & CI/CD Pipelines (GitHub Actions)
+
+For automated CI/CD pipelines (e.g. GitHub Actions, Cloud Build) and production repositories that require `terraform init`, version pinning, and `.terraform.lock.hcl` verification, configure a filesystem mirror in your workflow:
+
+```yaml
+- name: Setup Terraform Provider Mirror
+  shell: bash
+  run: |
+    # 1. Download and extract binary into local plugin mirror
+    TARGET_DIR="${HOME}/.terraform.d/plugins/registry.terraform.io/google/gh-app-unofficial/0.1.0/linux_amd64"
+    mkdir -p "${TARGET_DIR}"
+    gh release download v0.1.0 --repo "google/terraform-provider-gh-app-unofficial" --pattern "*_linux_amd64.zip" --dir "/tmp"
+    unzip -o "/tmp/"*_linux_amd64.zip -d "${TARGET_DIR}"
+
+    # 2. Configure CLI to use local filesystem mirror
+    cat << EOF > ~/.terraformrc
+    provider_installation {
+      filesystem_mirror {
+        path    = "${HOME}/.terraform.d/plugins"
+        include = ["registry.terraform.io/google/gh-app-unofficial"]
+      }
+      direct {
+        exclude = ["registry.terraform.io/google/gh-app-unofficial"]
+      }
+    }
+    EOF
+
+- name: Terraform Init
+  run: terraform init
+```
+
+> [!NOTE]
+> For a detailed guide on managing cross-platform lockfiles and advanced CLI options, see [DEVELOPMENT.md](./DEVELOPMENT.md#4-provider-installation--cli-configuration).
 
 ---
 
