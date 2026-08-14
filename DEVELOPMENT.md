@@ -247,15 +247,6 @@ When `make testacc` runs:
 4. `TestAccInstallationResource` executes the 9-step lifecycle sequence (`Create` -> `PlanOnly` -> `ImportState` -> `Update` swap -> `PlanOnly` -> `Update` multi -> `Update` `"all"` -> `PlanOnly` -> `Destroy`).
 5. Upon suite completion, `terraform destroy` cleanly uninstalls the Target App from `GITHUB_TARGET_ORG` (`org-b`), returning the sandbox to a pristine state.
 
-### 5.4 Alternative: Testing against Permanent GHES Staging
-
-To avoid the recurring 30-day trial renewal cycle, you can run acceptance tests against an internal GitHub Enterprise Server (GHES) staging instance by setting `GITHUB_BASE_URL`:
-
-```shell
-export GITHUB_BASE_URL="https://ghes-staging.corp.example.com"
-make testacc
-```
-
 ---
 
 ## 6. Provider Engine Architecture & Performance Internals
