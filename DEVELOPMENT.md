@@ -1,15 +1,20 @@
-# Developer Onboarding & Environment Bootstrap Guide
+# Local Development & Contributor Guide
 
-This guide provides exhaustive step-by-step instructions for setting up your local development environment, bootstrapping GitHub Enterprise credentials, and running both offline table-driven unit tests and live `TF_ACC=1` acceptance tests for `terraform-provider-gh-app-unofficial`.
+> [!NOTE]
+> **Looking to use this provider in Terraform?**
+> This guide is intended for developers compiling, testing, or contributing to the provider Go source code. If you simply want to use this provider in your infrastructure, please see the [README.md](./README.md#installation-pre-built-binaries) for pre-compiled binary installation instructions via GitHub Releases.
+
+This guide provides comprehensive, step-by-step instructions for setting up your local environment, understanding the dual-app testing architecture, executing offline unit tests and live acceptance tests, debugging the provider interactively with Delve and VS Code, and understanding the core provider runtime engine.
 
 ---
 
 ## 1. Prerequisites & Toolchain Setup
 
-To contribute to or debug the provider, ensure the following core tools are installed on your machine:
-- **[Go](https://golang.org/doc/install)** >= 1.24
+Ensure the following tools are installed on your workstation:
+
+- **[Go](https://golang.org/doc/install)** >= 1.25
 - **[Terraform CLI](https://developer.hashicorp.com/terraform/downloads)** >= 1.0
-- **Make** (`GNUmakefile`)
+- **GNU Make** (`make`)
 - **[VS Code](https://code.visualstudio.com/)** with the [Go Extension](https://marketplace.visualstudio.com/items?itemName=golang.Go)
 - **Delve Debugger** (`dlv`):
   ```shell
@@ -18,71 +23,93 @@ To contribute to or debug the provider, ensure the following core tools are inst
 
 ---
 
-## 2. Bootstrapping the Dual-App Architecture
+## 2. Quick Reference: Common Makefile Commands
 
-Acceptance testing (`make testacc` / CI) and interactive debugging (`dlv`) require credentials for **two distinct GitHub Apps** operating across a clear two-organization structure under a GitHub Enterprise Cloud or Server account (`GITHUB_ENTERPRISE_SLUG`).
+| Command | Action | Description |
+| :--- | :--- | :--- |
+| `make build` | Build | Compiles all packages in the workspace. |
+| `make install` | Install | Compiles and installs provider binary to `$GOPATH/bin`. |
+| `make fmt` | Format | Formats all Go source code using `gofmt -s -w -e .`. |
+| `make lint` | Lint | Executes `golangci-lint run` against codebase. |
+| `make generate` | Generate Docs | Uses `tfplugindocs` to regenerate documentation in `docs/`. |
+| `make test` | Unit Tests | Runs fast offline unit tests with race detector and coverage. |
+| `make testacc` | Acceptance Tests | Runs live end-to-end acceptance tests against GitHub sandbox. |
 
-### 2.1 The Two-Organization Structure (`org-a` vs. `org-b`)
-To cleanly verify organization installation lifecycles (`gh-app-unofficial_installation`), our workflow separates the organization where the Target App is owned (`org-a`) from the target sandbox organization where the app is installed and tested (`org-b`):
-- **`org-a` (App Owner Organization, e.g., `app-owner-org`):** The organization where the **Target App** (`GITHUB_APP_CLIENT_ID`) is registered and owned.
-- **`org-b` (Target Installation Organization, e.g., `target-org` / `GITHUB_TARGET_ORG`):** The dedicated static sandbox organization where the **Target App** is installed, updated, and uninstalled by our Terraform provider, and where our static fixture repositories (`test-repo-1`, `test-repo-2`) reside.
+---
+
+## 3. Dual-App Testing Architecture
+
+Acceptance testing (`make testacc` / action based workflow) and interactive debugging (`dlv`) require credentials for **two distinct GitHub Apps** operating across a two-organization structure under a GitHub Enterprise account (`GITHUB_ENTERPRISE_SLUG`).
+
+### 3.1 Two-Organization Model (`org-a` vs. `org-b`)
+
+To cleanly verify organization installation lifecycles (`gh-app-unofficial_installation`), our testing workflow separates the organization where the Target App and its permissions are defined (`org-a`) from the target sandbox organization where the app is installed and managed (`org-b`):
+
+- **`org-a` (App Owner & Registry Organization, e.g., `app-owner-org`):** The organization where the **Target App** (`GITHUB_APP_CLIENT_ID`) is registered, owned, and configured. The app permissions defined here (e.g. `Metadata: Read-only`) determine the access rights granted when the app is installed onto other organizations.
+- **`org-b` (Target Installation Organization, e.g., `target-org` / `GITHUB_TARGET_ORG`):** The dedicated static sandbox organization where the **Target App** is installed, updated, and uninstalled by Terraform, and where fixture test repositories (`test-repo-1`, `test-repo-2`) reside.
 
 ```mermaid
-graph LR
-    subgraph ORG_A ["org-a (App Owner Org: e.g. app-owner-org)"]
-        T_APP["Target App<br/>(GITHUB_APP_CLIENT_ID)"]
-    end
+flowchart TD
+    subgraph Enterprise ["Enterprise"]
+        direction TB
+        MGR["Manager App <br/>(Enterprise Token)"]
 
-    subgraph ENT ["GitHub Enterprise"]
-        M_INST["Manager App Installation<br/>(GITHUB_APP_INSTALLATION_ID)"]
-    end
+        subgraph ORG_A ["org-a (App Owner)"]
+            TARGET_APP["Target App <br/>(Permissions Defined)"]
+        end
 
-    subgraph ORG_B ["org-b (Target Installation Org: e.g. target-org)"]
-        INST["gh-app-unofficial_installation<br/>(Managed by Terraform)"]
-        TR1["test-repo-1"]
-        TR2["test-repo-2"]
-    end
+        subgraph ORG_B ["org-b (Test Sandbox)"]
+            INST["Target App Installation"]
+            R1[("test-repo-1")]
+            R2[("test-repo-2")]
 
-    T_APP -->|"Installed & Managed on org-b"| INST
-    INST -->|"Repository Selection"| TR1
-    INST -->|"Repository Selection"| TR2
-    M_INST -->|"Authorizes Terraform / GITHUB_TOKEN<br/>to manage installations"| INST
+            INST --> R1
+            INST --> R2
+        end
+
+        MGR -.-> INST
+        TARGET_APP --> INST
+    end
 ```
 
-### 2.2 Pre-Provisioning `org-b` (`target-org`)
+### 3.2 Pre-Provisioning Fixture Repositories (`org-b`)
+
 Inside **`org-b` (`GITHUB_TARGET_ORG`)**, create two permanent test repositories initialized with a `README.md`:
 - `test-repo-1`
 - `test-repo-2`
 
-### 2.3 The Manager App (Enterprise Installation Manager)
+### 3.3 The Manager App (Enterprise Installation Manager)
+
 The Manager App is an enterprise-scoped GitHub App configured with `Enterprise Organization Installations: Read & write` permissions. It grants Terraform the administrative authority required to install, update, and uninstall target GitHub Apps on organizations (`org-b`) across the enterprise.
 
-During local acceptance testing (`make testacc`) and debugging (`dlv`), `cmd/get-token` serves as a convenience utility that exchanges the Manager App's credentials for an installation access token (`GITHUB_TOKEN`). (Note that obtaining the token via `cmd/get-token` is optional; any valid token with enterprise installation management permissions can be used.)
-
 1. Navigate to your GitHub Enterprise Settings -> **GitHub Apps** -> **New GitHub App**.
-2. Set up required permissions:
+2. Configure required permissions:
    - **Enterprise Permissions** -> **Enterprise Organization Installations**: `Read & write`.
 3. Generate and download a Private Key (`.pem` file).
-4. Install the Manager App at the **Enterprise level** (under Enterprise Settings -> Installed GitHub Apps) so its access token is authorized for `/enterprises/{enterprise}/...` API endpoints.
+4. Install the Manager App at the **Enterprise level** (Enterprise Settings -> Installed GitHub Apps) so its access token is authorized for `/enterprises/{enterprise}/...` API endpoints.
 5. Record:
-   - `GITHUB_APP_ID`: The numeric App Client ID / Issuer ID of the Manager App.
-   - `GITHUB_APP_PRIVATE_KEY_PATH`: Full file path to the downloaded private key file (e.g. `~/keys/manager.pem` or `manager.pem`), including the filename.
-   - `GITHUB_APP_INSTALLATION_ID`: The numeric ID of the Manager App's installation at the Enterprise level.
+   - `GITHUB_APP_ID`: Numeric App ID of the Manager App.
+   - `GITHUB_APP_PRIVATE_KEY_PATH`: File path to the downloaded private key file (e.g. `~/keys/manager.pem` or `manager.pem`).
+   - `GITHUB_APP_INSTALLATION_ID`: Numeric ID of the Manager App's installation at the Enterprise level.
 
-### 2.4 The Target App (`org-a`)
-The Target App is the child application owned inside `org-a` (`app-owner-org`) whose installations on `org-b` (`target-org`) are created, updated, and deleted by Terraform (`gh-app-unofficial_installation`) during acceptance tests or debugging sessions.
+### 3.4 The Target App (`org-a`)
+
+The Target App is the child application owned inside `org-a` (`app-owner-org`) whose installations on `org-b` (`target-org`) are created, updated, and deleted by Terraform during acceptance tests or debugging sessions.
 
 1. Create a GitHub App inside **`org-a` (`app-owner-org`)**.
-2. Set up required permissions:
+2. Configure permissions:
    - **Repository Permissions** -> **Metadata**: `Read-only` (mandatory default permission for GitHub Apps).
-3. Ensure the app settings allow installation on other organizations (or any organization within your enterprise).
+   - *Note*: Any repository permissions configured on the Target App in `org-a` define the permission boundary granted to the app when installed across enterprise organizations.
+3. Ensure the app settings allow installation on other organizations within your enterprise.
 4. Record its Client ID (`GITHUB_APP_CLIENT_ID`).
 
 ---
 
-## 3. Local Environment Configuration (`.env`)
+## 4. Local Configuration (`.env` & `terraform.rc`)
 
-To avoid duplicating environment variables, our build tooling (`make testacc`) automatically inherits `GITHUB_ENTERPRISE_SLUG`, `GITHUB_TARGET_ORG`, and `GITHUB_APP_CLIENT_ID` directly from your `TF_VAR_*` variables. You only need a minimal, clean `.env` file in the workspace root:
+### 4.1 Minimal `.env` File
+
+Create a `.env` file in the repository root containing your local credentials:
 
 ```env
 # Manager App Credentials (for dynamic JWT authentication via cmd/get-token targeting org-b)
@@ -90,10 +117,10 @@ GITHUB_APP_ID="3875173"
 GITHUB_APP_PRIVATE_KEY_PATH="~/keys/manager.pem"
 GITHUB_APP_INSTALLATION_ID="135885315"
 
-# Target example directory for debugging
+# Target example directory for interactive debugging
 TF_EXAMPLE_DIR="examples/resources/gh-app-unofficial_installation"
 
-# Unified variables used seamlessly across both VS Code debugging (dlv) and make testacc
+# Unified variables used across both VS Code debugging (dlv) and make testacc
 TF_VAR_enterprise_slug="my-test-enterprise"
 TF_VAR_target_org="target-org"
 TF_VAR_client_id="Iv1.abc123mock456xyz"
@@ -102,33 +129,111 @@ TF_VAR_selected_repositories='["test-repo-1", "test-repo-2"]'
 ```
 
 > [!NOTE]
-> **Why CI uses `GH_` instead of `GITHUB_`:** GitHub Actions strictly reserves the `GITHUB_` prefix for system-defined environment variables and secrets (like `GITHUB_TOKEN`, `GITHUB_ACTOR`). Because GitHub blocks creating custom repository secrets and variables starting with `GITHUB_`, our automated CI workflow (`.github/workflows/acceptance.yml`) uses the `GH_` prefix (`GH_APP_ID`, `GH_APP_PRIVATE_KEY`, `GH_ENTERPRISE_SLUG`, etc.), while local `.env` execution (`make testacc`) uses standard `GITHUB_*` environment variables.
+> **Why CI uses `GH_` instead of `GITHUB_`:** GitHub Actions strictly reserves the `GITHUB_` prefix for system-defined environment variables and secrets (like `GITHUB_TOKEN`, `GITHUB_ACTOR`). Because GitHub blocks creating custom repository secrets starting with `GITHUB_`, our automated CI workflow (`.github/workflows/acceptance.yml`) uses the `GH_` prefix (`GH_APP_ID`, `GH_APP_PRIVATE_KEY`, `GH_ENTERPRISE_SLUG`), while local `.env` execution (`make testacc`) uses standard `GITHUB_*` variables.
+
+### 4.2 Provider Installation & CLI Configuration (`dev_overrides` vs `filesystem_mirror`)
+
+Because this provider is distributed as an **unofficial provider** (not published to `registry.terraform.io`), the Terraform CLI must be configured to locate the binary. Depending on your use case, choose between **Developer Overrides** and **Filesystem Mirrors**:
+
+#### 4.2.1 Option A: Fast Local Developer Overrides (`dev_overrides`)
+
+Ideal for active Go development, compiling from source, and interactive debugging with Delve:
+
+1. Compile and install the binary to `$GOPATH/bin`:
+   ```shell
+   make install
+   ```
+2. Configure `~/.terraformrc` (or create a local `terraform.rc` in the workspace root):
+   ```hcl
+   provider_installation {
+     dev_overrides {
+       "google/gh-app-unofficial" = "/path/to/your/home/go/bin"
+     }
+     direct {}
+   }
+   ```
+3. If using a local `terraform.rc`, export the configuration path:
+   ```shell
+   export TF_CLI_CONFIG_FILE="$PWD/terraform.rc"
+   ```
+
+> [!NOTE]
+> `dev_overrides` runs the local binary directly and **bypasses `terraform init`**, version constraints, and `.terraform.lock.hcl`.
 
 ---
 
-## 4. Unified Operating Model
+#### 4.2.2 Option B: Production & CI/CD Filesystem Mirror (`filesystem_mirror`)
 
-Both local interactive debugging (`dlv` / VS Code `F5`) and automated acceptance testing (`make testacc`) target the exact same static sandbox organization (`GITHUB_TARGET_ORG` / `org-b`) and pre-provisioned repositories (`test-repo-1`, `test-repo-2`):
+Required for production repositories (e.g. `google-infra-github`), automated CI/CD pipelines (e.g. GitHub Actions), and testing pre-built release binaries that require `terraform init` and lockfile validation:
 
-| Category | Manual Debugging & Dev Mode (`dlv` / VS Code F5) | Automated Acceptance Testing (`make testacc` / CI) |
-| :--- | :--- | :--- |
-| **Purpose** | Interactive development, attaching breakpoints (`dlv`) to local HCL examples (`examples/resources/gh-app-unofficial_installation`). | Automated, non-interactive CI/CD validation and regression testing against the static sandbox. |
-| **Target Organization (`org-b`)** | Static dedicated organization (`TF_VAR_target_org` / `GITHUB_TARGET_ORG` in `.env`). | Static dedicated organization (`GITHUB_TARGET_ORG`). Pre-check verifies required environment variables are configured. |
-| **App Authentication** | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` in `.env` to authenticate. | Uses `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, and `GITHUB_APP_INSTALLATION_ID` via `cmd/get-token`. |
-| **HCL Input Variables** | Uses `TF_VAR_enterprise_slug`, `TF_VAR_target_org`, `TF_VAR_client_id`, and `TF_EXAMPLE_DIR`. | Controlled entirely by Go test strings (`testAccConfig`); ignores `TF_VAR_*` variables. |
+1. Place the compiled binary into the standard plugin hierarchy:
+   ```shell
+   TARGET_DIR="${HOME}/.terraform.d/plugins/registry.terraform.io/google/gh-app-unofficial/0.1.0/linux_amd64"
+   mkdir -p "${TARGET_DIR}"
+   cp /path/to/terraform-provider-gh-app-unofficial_v0.1.0 "${TARGET_DIR}/"
+   ```
+
+2. Configure `~/.terraformrc` to route `google/gh-app-unofficial` to the filesystem mirror while excluding it from remote registry queries (preventing `404 Provider not found` errors):
+   ```hcl
+   provider_installation {
+     filesystem_mirror {
+       path    = "/path/to/your/home/.terraform.d/plugins"
+       include = ["registry.terraform.io/google/gh-app-unofficial"]
+     }
+     direct {
+       exclude = ["registry.terraform.io/google/gh-app-unofficial"]
+     }
+   }
+   ```
+
+3. Run `terraform init` in your Terraform root module. Terraform will calculate the `h1:` cryptographic checksum and generate `.terraform.lock.hcl`.
 
 ---
 
-## 5. Executing Tests Locally
+#### 4.2.3 Multi-Platform Lockfile Strategy (`.terraform.lock.hcl`)
 
-### 5.1 Fast Offline Unit Tests (`go test ./...`)
-Unit tests execute entirely offline via injected `roundTripperFunc` and `httptest.Server` mocks. They require **zero external credentials or network connections** and run in under 2 seconds:
+When collaborating across different operating systems (e.g., macOS Apple Silicon developers and Linux AMD64 CI runners):
+- Running `terraform init` calculates the `h1:` SHA-256 hash for the **current local platform** and appends it to `.terraform.lock.hcl`.
+- To generate lockfile checksums for multiple platforms without running `init` on each OS, place all target OS/arch binaries into your local mirror directory and run:
+  ```shell
+  terraform providers lock \
+    -platform=linux_amd64 \
+    -platform=darwin_arm64 \
+    -platform=darwin_amd64
+  ```
+- Always commit `.terraform.lock.hcl` to version control alongside your `.tf` files.
 
+---
+
+## 5. Testing Guide
+
+### 5.1 Fast Offline Unit Tests (`make test`)
+
+Unit tests execute entirely offline via injected `roundTripperFunc` and `httptest.Server` HTTP mocks. They require **zero external credentials or network connections** and run in under 2 seconds:
+
+```shell
+make test
+```
+
+Or run directly with Go:
 ```shell
 go test -v -race -shuffle=on -cover ./...
 ```
 
-### 5.2 Live Acceptance Tests (`make testacc`)
+### 5.2 Running Targeted Single Tests
+
+To run a specific unit test function:
+```shell
+go test -v -run "^TestParseCompositeID$" ./internal/provider/...
+```
+
+To run a specific acceptance test with debug logs:
+```shell
+TF_ACC=1 go test -v -run "^TestAccInstallationResource$" ./internal/provider/...
+```
+
+### 5.3 Live Acceptance Tests (`make testacc`)
+
 Acceptance tests exercise real GitHub Enterprise endpoints against your static sandbox organization (`org-b`):
 
 ```shell
@@ -136,55 +241,127 @@ make testacc
 ```
 
 When `make testacc` runs:
-1. `cmd/get-token` parses `.env`, signs an RS256 JWT using `GITHUB_APP_PRIVATE_KEY_PATH`, and exports an authenticated `GITHUB_TOKEN` scoped to `org-b`.
-2. `testAccPreCheck` verifies that all required environment variables (`GITHUB_TOKEN`, `GITHUB_ENTERPRISE_SLUG`, `GITHUB_TARGET_ORG`, `GITHUB_APP_CLIENT_ID`) are configured before running live tests.
-3. Automated sweepers (`sweepInstallations` via `-sweep=all`) query enterprise installations via `client.Enterprise.ListAppInstallations` and cleanly uninstall any existing installations matching `GITHUB_APP_CLIENT_ID` before tests begin.
-4. `TestAccInstallationResource` executes the exhaustive 9-step sequence (`Create` -> `PlanOnly` -> `ImportState` -> `Update` swap -> `PlanOnly` -> `Update` multi -> `Update` `"all"` -> `PlanOnly` -> `Destroy`).
-5. Upon suite completion, `terraform destroy` cleanly uninstalls the Target App from `GITHUB_TARGET_ORG` (`org-b`), returning the organization to a pristine state for the next run.
+1. `cmd/get-token` parses `.env`, signs an RS256 JWT using `GITHUB_APP_PRIVATE_KEY_PATH`, and mints an authenticated `GITHUB_TOKEN` scoped to `org-b`.
+2. `testAccPreCheck` verifies required environment variables are set before running live tests.
+3. Automated sweepers (`sweepInstallations` via `-sweep=all`) query enterprise installations and cleanly uninstall any leftover installations matching `GITHUB_APP_CLIENT_ID` before tests begin.
+4. `TestAccInstallationResource` executes the 9-step lifecycle sequence (`Create` -> `PlanOnly` -> `ImportState` -> `Update` swap -> `PlanOnly` -> `Update` multi -> `Update` `"all"` -> `PlanOnly` -> `Destroy`).
+5. Upon suite completion, `terraform destroy` cleanly uninstalls the Target App from `GITHUB_TARGET_ORG` (`org-b`), returning the sandbox to a pristine state.
 
 ---
 
-## 6. Interactive VS Code Debugging (`F5` / `dlv`)
+## 6. Provider Engine Architecture & Performance Internals
 
-### 6.1 Configuring Dev Overrides (`terraform.rc`)
-Create a `terraform.rc` file in the workspace root pointing to your local Go binary directory (`~/go/bin`):
+The provider client (`internal/provider/provider.go`) is engineered for high concurrency safety, fast performance, and zero rate-limit waste:
 
-```hcl
-provider_installation {
-  dev_overrides {
-    "google/gh-app-unofficial" = "/path/to/your/home/go/bin"
-  }
-  direct {}
-}
+```mermaid
+flowchart TD
+    TF["Terraform Plan / Apply"]
+
+    subgraph Engine ["Provider Client (internal/provider)"]
+        SF["singleflight.Group <br/>(Request Coalescing)"]
+        CACHE{"In-Memory Cache <br/>(5s TTL)"}
+        FAST["Cached Struct <br/>(0 API Calls)"]
+        ETAG["etagTransport <br/>(If-None-Match)"]
+    end
+
+    API["GitHub REST API"]
+
+    TF --> SF
+    SF --> CACHE
+    CACHE -->|"Fresh Hit"| FAST
+    CACHE -->|"Miss / Expired"| ETAG
+    ETAG --> API
+    API -->|"304 Not Modified"| FAST
+    API -->|"200 OK"| CACHE
 ```
 
-### 6.2 Debugging with Breakpoints
-1. Open the **Run and Debug** view (`Ctrl+Shift+D`) in VS Code.
-2. Select **`Debug Provider`** and press `F5`.
-3. Choose the Terraform command (`plan`, `apply`, or `destroy`) from the dropdown prompt.
-4. Switch to the **Terminal** tab (`Start Headless Debugger`), and press **`ENTER`** to run Terraform against your target HCL directory (`TF_EXAMPLE_DIR`). Your breakpoints inside `internal/provider/*.go` will now trigger cleanly.
+- **`singleflight.Group`**: Coalesces concurrent reads for the same organization into a single HTTP request across parallel Terraform worker goroutines.
+- **5-Second In-Memory TTL Cache**: Stores parsed installation data structures with deep defensive copying (`cloneInstallation`) to eliminate shared-memory mutation bugs.
+- **ETag Conditional GETs (`etagTransport`)**: Adds `If-None-Match` headers to API requests. On `304 Not Modified`, the cached data is returned instantly with **zero rate-limit cost**.
+- **Read-After-Write Consistency**: `InvalidateOrgCache` automatically flushes cached entries for the target organization on any `Create`, `Update`, or `Delete` action.
 
 ---
 
-## 7. Organization Maintenance Runbook
+## 7. Interactive VS Code & Delve Debugging
 
-Because the **Streamlined Static Sandbox Architecture** does not dynamically create or delete organizations or repositories, maintaining the test environment requires zero cleanup scripts or super-admin site permissions.
+The repository includes pre-configured VS Code tasks and launch configurations in `.vscode/`.
 
-If rotating to new organizations or renewing an enterprise trial:
-1. Create or designate two organizations: `org-a` (`app-owner-org`) and `org-b` (`target-org`).
-2. Inside `org-a` (`app-owner-org`), create the Target App and note its Client ID (`GITHUB_APP_CLIENT_ID`). Ensure it is installable on `org-b`.
-3. Inside `org-b` (`target-org`), initialize two repositories (`test-repo-1` and `test-repo-2`).
-4. Install the Manager App (`GITHUB_APP_ID`) onto `org-b` (`target-org`) with App/Org administration permissions and note its Installation ID (`GITHUB_APP_INSTALLATION_ID`).
-5. Update `.env` locally or GitHub Actions Repository Secrets/Variables (`GH_APP_ID`, `GH_APP_INSTALLATION_ID`, `GH_APP_CLIENT_ID`, `GH_APP_TEST_ENTERPRISE`, `GH_APP_TEST_ORG`, `GH_APP_PRIVATE_KEY`).
+### 7.1 Running Examples without Breakpoints (Dev Overrides)
 
-## 8. Binary Release & Installation Guide
+1. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
+2. Select **Tasks: Run Task** -> **`Terraform Plan (Verification Example)`** or **`Terraform Apply (Verification Example)`**.
+3. This automatically compiles the provider binary (`go install`) and executes Terraform against `TF_EXAMPLE_DIR`.
 
-### 8.1 Releasing a New Version
-To release a new binary version of the provider:
-1. Ensure `main` branch is up to date and passing tests.
+### 7.2 Debugging Provider with Breakpoints (`F5`)
+
+1. Set breakpoints inside `internal/provider/*.go`.
+2. Open the **Run and Debug** view (`Ctrl+Shift+D` / `Cmd+Shift+D`).
+3. Select **`Debug Provider`** and press **`F5`**.
+4. Select the desired Terraform command (`plan`, `apply`, or `destroy`) from the dropdown prompt.
+5. VS Code will launch Delve in headless mode via `debug-terraform.sh` and attach the debugger automatically.
+6. Switch to the **Terminal** tab in VS Code (where the `Start Headless Debugger` task is running) and press **`ENTER`**. Your breakpoints will now be triggered.
+
+### 7.3 Linux Yama `ptrace_scope` Troubleshooting
+
+If the Delve debugger fails to attach on Linux with `operation not permitted`, enable ptrace permissions:
+
+```shell
+sudo sysctl -w kernel.yama.ptrace_scope=0
+```
+
+*(To make permanent across reboots, add `kernel.yama.ptrace_scope = 0` to `/etc/sysctl.d/10-ptrace.conf`)*
+
+---
+
+## 8. Sandbox Organization Maintenance & Renewal Runbook
+
+Because the **Static Sandbox Architecture** does not dynamically create or delete organizations or repositories, maintaining the test environment requires zero cleanup scripts or super-admin site permissions.
+
+If rotating to a new sandbox organization or renewing a 30-day enterprise trial:
+1. Designate or create two organizations: `org-a` (`app-owner-org`) and `org-b` (`target-org`).
+2. Inside `org-a`, create the Target App and record its Client ID (`GITHUB_APP_CLIENT_ID`). Ensure it is installable on `org-b`.
+3. Inside `org-b`, initialize `test-repo-1` and `test-repo-2`.
+4. Install the Manager App (`GITHUB_APP_ID`) onto `org-b` with administration permissions and record its Installation ID (`GITHUB_APP_INSTALLATION_ID`).
+5. Update your `.env` locally or GitHub Actions Repository Secrets/Variables (`GH_APP_ID`, `GH_APP_INSTALLATION_ID`, `GH_APP_CLIENT_ID`, `GH_APP_TEST_ENTERPRISE`, `GH_APP_TEST_ORG`, `GH_APP_PRIVATE_KEY`).
+
+---
+
+## 9. Release Process & Distribution
+
+Releases are automated via GitHub Actions and [GoReleaser](https://goreleaser.com/).
+
+### Releasing a New Version
+
+1. Ensure the `main` branch is up to date and all unit tests pass:
+   ```shell
+   make test
+   ```
 2. Create and push a semantic tag:
    ```shell
    git tag v0.1.0
    git push origin v0.1.0
    ```
-3. GitHub Actions will trigger .github/workflows/release.yml, verify that the tag belongs to main, cross-compile provider binaries for Linux, macOS, and Windows, upload them to GitHub Releases, and generate SLSA build attestations.
+3. GitHub Actions triggers `.github/workflows/release.yml`:
+   - Verifies the tag is an ancestor of `main`.
+   - Cross-compiles binaries for Linux, macOS, and Windows.
+   - Packages archives and calculates SHA256 checksums.
+   - Generates [SLSA Build Attestations](https://slsa.dev/) (Sigstore OIDC provenance).
+   - Publishes the GitHub Release.
+
+---
+
+## 10. Repository Structure Map
+
+| Path | Purpose |
+| :--- | :--- |
+| `internal/provider/` | Core provider implementation (provider schema, resources, data sources, rate limiting, and unit tests). |
+| `cmd/get-token/` | CLI utility for minting GitHub App Installation Access Tokens via RS256 JWT signing. |
+| `docs/` | Generated Terraform Registry documentation (maintained via `make generate`). |
+| `examples/` | Testable example HCL configurations for provider, resources, and data sources. |
+| `tools/` | Tool dependencies (e.g. `tfplugindocs` for documentation generation). |
+| `.github/workflows/` | GitHub Actions CI/CD workflows (`test.yml`, `acceptance.yml`, `release.yml`). |
+| `.vscode/` | VS Code task definitions (`tasks.json`) and debugger configurations (`launch.json`). |
+| `GNUmakefile` | Standardized build, test, lint, format, and documentation generation commands. |
+| `debug-terraform.sh` | Headless Delve debugging wrapper script. |
+
+

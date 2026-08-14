@@ -3,12 +3,12 @@
 page_title: "gh-app-unofficial_installations Data Source - gh-app-unofficial"
 subcategory: ""
 description: |-
-  
+  Lists all GitHub App installations and their repository access configurations within a target organization.
 ---
 
 # gh-app-unofficial_installations (Data Source)
 
-
+Lists all GitHub App installations and their repository access configurations within a target organization.
 
 ## Example Usage
 
