@@ -77,6 +77,7 @@ output "installation" {
 
 ### Optional
 
+- `auto_accept_permission_drift` (Boolean) Whether to automatically accept permission changes (drift) on the GitHub App installation when requested permissions change on the GitHub App definition. Defaults to `false`. When `false`, Terraform tracks active installed permissions and expects an Organization Owner to accept pending permission requests via GitHub UI. When `true`, Terraform will detect permission changes on the app definition and automatically accept them by re-running the app installation API call during update.
 - `repository_selection` (String) The type of repository selection for the app installation. Either set to 'all' or 'selected'.
 - `selected_repositories` (Set of String) The list of repository names the installation has access to. Only valid and required when repository_selection is set to 'selected'.
 

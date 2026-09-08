@@ -83,6 +83,7 @@ func TestAccInstallationResource(t *testing.T) {
 					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "repository_selection", "selected"),
 					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.#", "1"),
 					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.0", "test-repo-1"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "auto_accept_permission_drift", "false"),
 					resource.TestCheckResourceAttrSet("gh-app-unofficial_installation.test", "id"),
 					resource.TestCheckResourceAttrSet("gh-app-unofficial_installation.test", "installation_id"),
 					resource.TestCheckResourceAttrSet("gh-app-unofficial_installation.test", "created_at"),
@@ -101,18 +102,19 @@ func TestAccInstallationResource(t *testing.T) {
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"updated_at"},
 			},
-			// Step 4: Update - Repository Swap (to "test-repo-2")
+			// Step 4: Update - Repository Swap (to "test-repo-2") with auto_accept_permission_drift = true
 			{
-				Config: testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-2"`),
+				Config: testAccInstallationConfig_selected_auto_accept(entSlug, targetOrg, clientID, `"test-repo-2"`, true),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "repository_selection", "selected"),
 					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.#", "1"),
 					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "selected_repositories.0", "test-repo-2"),
+					resource.TestCheckResourceAttr("gh-app-unofficial_installation.test", "auto_accept_permission_drift", "true"),
 				),
 			},
 			// Step 5: Idempotency Verification on Swap
 			{
-				Config:   testAccInstallationConfig_selected(entSlug, targetOrg, clientID, `"test-repo-2"`),
+				Config:   testAccInstallationConfig_selected_auto_accept(entSlug, targetOrg, clientID, `"test-repo-2"`, true),
 				PlanOnly: true,
 			},
 			// Step 6: Update - Multi-Repository Expansion ("test-repo-1", "test-repo-2")
@@ -269,6 +271,22 @@ resource "gh-app-unofficial_installation" "test" {
   selected_repositories = [%[4]s]
 }
 `, enterpriseSlug, targetOrg, clientID, repos)
+}
+
+func testAccInstallationConfig_selected_auto_accept(enterpriseSlug, targetOrg, clientID, repos string, autoAccept bool) string {
+	return fmt.Sprintf(`
+provider "gh-app-unofficial" {
+  enterprise_slug = %[1]q
+}
+
+resource "gh-app-unofficial_installation" "test" {
+  target_org                    = %[2]q
+  client_id                     = %[3]q
+  repository_selection          = "selected"
+  selected_repositories         = [%[4]s]
+  auto_accept_permission_drift = %[5]t
+}
+`, enterpriseSlug, targetOrg, clientID, repos, autoAccept)
 }
 
 func testAccInstallationConfig_all(enterpriseSlug, targetOrg, clientID string) string {
